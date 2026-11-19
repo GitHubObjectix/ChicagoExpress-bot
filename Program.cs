@@ -11,6 +11,14 @@ using var playwright = await Playwright.CreateAsync();
 int tabIndex = 0;
 int playerIndex = 0;
 bool firstConnection = true;
+bool shutdownRequested = false;
+
+Console.CancelKeyPress += (_, eventArgs) =>
+{
+    eventArgs.Cancel = true;
+    shutdownRequested = true;
+    Console.WriteLine("Shutdown requested. Cleaning up resources...");
+};
 
 // bot related variables
 StateEncoder? stateEncoder = null;
@@ -33,12 +41,15 @@ string optimizerPath =
     Path.Combine(checkpointDirectory, "optimizer.pt");
 
 // main loop to implement Playwright reconnection on connection loss
-while (true)
+try
 {
-    try
+    while (!shutdownRequested)
     {
-        var browser = await playwright.Chromium.ConnectOverCDPAsync(
-            "http://127.0.0.1:9222");
+        try
+        {
+            await using var browser =
+                await playwright.Chromium.ConnectOverCDPAsync(
+                    "http://127.0.0.1:9222");
 
         browser.Disconnected += (_, _) =>
         {
@@ -82,7 +93,8 @@ while (true)
         if (!gameFrontendHandler.ReadyToPlay())
         {
             Console.WriteLine("I am not ready to play");
-            Environment.Exit(1);
+            shutdownRequested = true;
+            continue;
         }
 
         Console.WriteLine($"Playing {gameFrontendHandler.GetPlayerName()} in this game...");
@@ -207,16 +219,24 @@ while (true)
         }
 
         Console.WriteLine("Connection lost. Reconnecting...");
-    }
-    catch (PlaywrightException ex)
-    {
-        Console.WriteLine($"Playwright connection failed: {ex.Message}");
-        Console.WriteLine("Retrying in one second...");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Exception occurred: {ex.Message}");
-    }
+        }
+        catch (PlaywrightException ex)
+        {
+            Console.WriteLine($"Playwright connection failed: {ex.Message}");
+            Console.WriteLine("Retrying in one second...");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Exception occurred: {ex.Message}");
+        }
 
-    await Task.Delay(1000);
+        if (!shutdownRequested)
+            await Task.Delay(1000);
+    }
+}
+finally
+{
+    optimizer?.Dispose();
+    targetNetwork?.Dispose();
+    policyNetwork?.Dispose();
 }
