@@ -7,10 +7,32 @@ using TorchSharp;
 
 using var playwright = await Playwright.CreateAsync();
 
+// game related variables
 int tabIndex = 0;
 int playerIndex = 0;
 bool firstConnection = true;
 
+// bot related variables
+StateEncoder? stateEncoder = null;
+ActionQNetwork? policyNetwork = null;
+ActionQNetwork? targetNetwork = null;
+TorchSharp.Modules.Adam? optimizer = null;
+
+var device = torch.CPU;
+
+// persistence related variables
+string checkpointDirectory =
+    Path.Combine(AppContext.BaseDirectory, "checkpoints");
+Directory.CreateDirectory(checkpointDirectory);
+
+string policyNetworkPath =
+    Path.Combine(checkpointDirectory, "policy-network.pt");
+string targetNetworkPath =
+    Path.Combine(checkpointDirectory, "target-network.pt");
+string optimizerPath =
+    Path.Combine(checkpointDirectory, "optimizer.pt");
+
+// main loop to implement Playwright reconnection on connection loss
 while (true)
 {
     try
@@ -65,10 +87,6 @@ while (true)
 
         Console.WriteLine($"Playing {gameFrontendHandler.GetPlayerName()} in this game...");
 
-        firstConnection = false;
-
-        var uiFrame = gamePage.FrameLocator("#ui");
-
         while (!await gameFrontendHandler.IsGameStarted())
         {
             Console.WriteLine("Game has not yet started");
@@ -77,27 +95,53 @@ while (true)
 
         Console.WriteLine("Game starts");
 
-        while (browser.IsConnected && !gamePage.IsClosed)
+        if (firstConnection)
         {
-            // initialize neural network
+            // initialize neural network related variables
+            stateEncoder = new StateEncoder(gameFrontendHandler.GetNumPlayers());
 
-            StateEncoder stateEncoder = new StateEncoder(gameFrontendHandler.GetNumPlayers());
-
-            var device = torch.CPU;
-
-            using var policyNetwork = new ActionQNetwork(
+            policyNetwork = new ActionQNetwork(
                 stateFeatureCount: stateEncoder.FeatureCount,
                 actionFeatureCount: ActionEncoder.FeatureCount,
                 hiddenSize: 128
             ).to(device);
 
-            //// Adam will update the network weights during training.
-            //using var optimizer = torch.optim.Adam(
-            //    policyNetwork.parameters(),
-            //    lr: 0.0001
-            //);
-            // end initialize neural network
+            if (File.Exists(policyNetworkPath))
+            {
+                policyNetwork.load(policyNetworkPath);
+                Console.WriteLine($"policy-network loaded: {policyNetworkPath}");
+            }
 
+            targetNetwork = new ActionQNetwork(
+                stateFeatureCount: stateEncoder.FeatureCount,
+                actionFeatureCount: ActionEncoder.FeatureCount,
+                hiddenSize: 128
+            ).to(device);
+
+            if (File.Exists(targetNetworkPath))
+            {
+                targetNetwork.load(targetNetworkPath);
+                Console.WriteLine($"target-network loaded: {targetNetworkPath}");
+            }
+
+            //targetNetwork.load_state_dict(policyNetwork.state_dict());
+
+            // Adam will update the network weights during training.
+            optimizer = torch.optim.Adam(policyNetwork.parameters(), lr: 0.0001 );
+            if (File.Exists(optimizerPath))
+            {
+                optimizer.load_state_dict(optimizerPath);
+                Console.WriteLine($"optimizer loaded: {optimizerPath}");
+            }
+
+            // end neural network initialization
+        }
+
+        firstConnection = false;
+
+        // main game loop (TODO! game terminal condition not implemented yet)
+        while (browser.IsConnected && !gamePage.IsClosed)
+        {
             if (await gameFrontendHandler.ItsMyTurn())
             {
                 Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is at turn");
@@ -148,13 +192,16 @@ while (true)
                 } while (nextAction != null);
 
                 // TODO! train neural network here
-
+                // Diese drei Zeilen müssen nach DqnTrainer.TrainBatch(...)
+                // ausgeführt werden, sobald der Trainingsschritt implementiert ist.
+                policyNetwork!.save(policyNetworkPath);
+                targetNetwork!.save(targetNetworkPath);
+                optimizer!.save_state_dict(optimizerPath);
             }
             else
             {
                 Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is not at turn");
             }
-
 
             await Task.Delay(250);
         }

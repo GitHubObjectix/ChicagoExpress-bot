@@ -7,7 +7,7 @@ namespace chicago_express_bot
 {
     public sealed class ActionQNetwork : Module<Tensor, Tensor>
     {
-        private readonly Module<Tensor, Tensor> layers;        
+        private readonly Module<Tensor, Tensor> layers;
 
         public int StateFeatureCount { get; }
         public int ActionFeatureCount { get; }
