@@ -10,7 +10,7 @@ namespace chicago_express_bot
         public static int ChooseBestAction(
             ActionQNetwork network,
             float[] stateFeatures,
-            List<CandidateAction> candidateActions)
+            IReadOnlyList<float[]> candidateActions)
         {
             if (candidateActions.Count == 0)
                 throw new ArgumentException("No legal actions.");
@@ -27,7 +27,7 @@ namespace chicago_express_bot
 
             for (int i = 0; i < candidateActions.Count; i++)
             {
-                float[] actionFeatures = ActionEncoder.Encode(candidateActions[i]);
+                float[] actionFeatures = candidateActions[i];
 
                 if (actionFeatures.Length != network.ActionFeatureCount)
                     throw new ArgumentException(

@@ -19,7 +19,7 @@ namespace chicago_express_bot
         }
 
         public static float TrainBatch(
-            ActionQNetwork onlineNetwork,
+            ActionQNetwork policyNetwork,
             ActionQNetwork targetNetwork,
             torch.optim.Optimizer optimizer,
             IReadOnlyList<ReplayTransition> batch,
@@ -28,7 +28,7 @@ namespace chicago_express_bot
             if (batch.Count == 0)
                 throw new ArgumentException("Training batch is empty.");
 
-            onlineNetwork.train();
+            policyNetwork.train();
             targetNetwork.eval();
 
             var predictions = new List<Tensor>();
@@ -40,12 +40,12 @@ namespace chicago_express_bot
                 {
                     float[] inputFeatures = Combine(
                         transition.StateFeatures,
-                        transition.ActionFeatures);
+                        transition.ChosenActionFeatures);
 
                     using var input = torch.tensor(inputFeatures)
                         .reshape(1, inputFeatures.Length);
 
-                    using var output = onlineNetwork.forward(input);
+                    using var output = policyNetwork.forward(input);
 
                     // Keep the computation graph for backpropagation.
                     predictions.Add(output.squeeze());
@@ -61,7 +61,7 @@ namespace chicago_express_bot
                         var transition = batch[i];
 
                         if (transition.IsTerminal ||
-                            transition.NextLegalActionFeatures.Count == 0)
+                            transition.NextLegalActionsFeatures.Count == 0)
                         {
                             targetValues[i] = transition.Reward;
                             continue;
@@ -71,7 +71,7 @@ namespace chicago_express_bot
 
                         // Legal action count may differ for every transition.
                         foreach (var nextAction in
-                                 transition.NextLegalActionFeatures)
+                                 transition.NextLegalActionsFeatures)
                         {
                             float[] nextInputFeatures = Combine(
                                 transition.NextStateFeatures,
@@ -108,7 +108,7 @@ namespace chicago_express_bot
 
                 // Prevent excessively large gradient updates.
                 torch.nn.utils.clip_grad_norm_(
-                    onlineNetwork.parameters(), 1.0);
+                    policyNetwork.parameters(), 1.0);
 
                 optimizer.step();
 

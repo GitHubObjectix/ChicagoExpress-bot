@@ -4,12 +4,17 @@ using System.Text;
 
 namespace chicago_express_bot
 {
+    public sealed record PendingReplayTransition(
+        GameState State,
+        float[] StateFeatures,
+        float[] ChosenActionFeatures);
+
     public sealed record ReplayTransition(
         float[] StateFeatures,
-        float[] ActionFeatures,
+        float[] ChosenActionFeatures,
         float Reward,
         float[] NextStateFeatures,
-        IReadOnlyList<float[]> NextLegalActionFeatures,
+        IReadOnlyList<float[]> NextLegalActionsFeatures,
         bool IsTerminal
     );
 

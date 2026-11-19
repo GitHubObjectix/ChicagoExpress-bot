@@ -25,6 +25,10 @@ StateEncoder? stateEncoder = null;
 ActionQNetwork? policyNetwork = null;
 ActionQNetwork? targetNetwork = null;
 TorchSharp.Modules.Adam? optimizer = null;
+RewardCalculator? rewardCalculator = null;
+
+PendingReplayTransition? pendingTransition = null;
+ReplayBuffer? replayBuffer = null;
 
 var device = torch.CPU;
 
@@ -51,174 +55,201 @@ try
                 await playwright.Chromium.ConnectOverCDPAsync(
                     "http://127.0.0.1:9222");
 
-        browser.Disconnected += (_, _) =>
-        {
-            Console.WriteLine("CDP connection disconnected.");
-        };
-
-        var context = browser.Contexts[0];
-        var pages = context.Pages;
-
-        if (firstConnection)
-        {
-            Console.WriteLine($"Connected: {browser.IsConnected}");
-
-            foreach (var (page, index) in pages.Select((p, i) => (p, i)))
+            browser.Disconnected += (_, _) =>
             {
-                Console.WriteLine(
-                    $"{index}: {page.Url} | {await page.TitleAsync()}");
-            }
+                Console.WriteLine("CDP connection disconnected.");
+            };
 
-            Console.Write("Enter the Boardzilla tab number: ");
-            tabIndex = int.Parse(Console.ReadLine() ?? "0");
-        }
+            var context = browser.Contexts[0];
+            var pages = context.Pages;
 
-        if (tabIndex < 0 || tabIndex >= pages.Count)
-        {
-            throw new InvalidOperationException(
-                $"Tab {tabIndex} is not available.");
-        }
-
-        var gamePage = pages[tabIndex];
-
-        var gameFrontendHandler = await GameFrontendHandler.Initialize(gamePage);
-        while (gameFrontendHandler.NeedsDecision() != null)
-        {
-            var neededDecision = gameFrontendHandler.NeedsDecision()!;
-
-            Console.WriteLine(neededDecision.GetPrompt());
-            await gameFrontendHandler.MakeDecision(Console.ReadLine());
-        }
-
-        if (!gameFrontendHandler.ReadyToPlay())
-        {
-            Console.WriteLine("I am not ready to play");
-            shutdownRequested = true;
-            continue;
-        }
-
-        Console.WriteLine($"Playing {gameFrontendHandler.GetPlayerName()} in this game...");
-
-        while (!await gameFrontendHandler.IsGameStarted())
-        {
-            Console.WriteLine("Game has not yet started");
-            await Task.Delay(250);
-        }
-
-        Console.WriteLine("Game starts");
-
-        if (firstConnection)
-        {
-            // initialize neural network related variables
-            stateEncoder = new StateEncoder(gameFrontendHandler.GetNumPlayers());
-
-            policyNetwork = new ActionQNetwork(
-                stateFeatureCount: stateEncoder.FeatureCount,
-                actionFeatureCount: ActionEncoder.FeatureCount,
-                hiddenSize: 128
-            ).to(device);
-
-            if (File.Exists(policyNetworkPath))
+            if (firstConnection)
             {
-                policyNetwork.load(policyNetworkPath);
-                Console.WriteLine($"policy-network loaded: {policyNetworkPath}");
-            }
+                Console.WriteLine($"Connected: {browser.IsConnected}");
 
-            targetNetwork = new ActionQNetwork(
-                stateFeatureCount: stateEncoder.FeatureCount,
-                actionFeatureCount: ActionEncoder.FeatureCount,
-                hiddenSize: 128
-            ).to(device);
-
-            if (File.Exists(targetNetworkPath))
-            {
-                targetNetwork.load(targetNetworkPath);
-                Console.WriteLine($"target-network loaded: {targetNetworkPath}");
-            }
-
-            //targetNetwork.load_state_dict(policyNetwork.state_dict());
-
-            // Adam will update the network weights during training.
-            optimizer = torch.optim.Adam(policyNetwork.parameters(), lr: 0.0001 );
-            if (File.Exists(optimizerPath))
-            {
-                optimizer.load_state_dict(optimizerPath);
-                Console.WriteLine($"optimizer loaded: {optimizerPath}");
-            }
-
-            // end neural network initialization
-        }
-
-        firstConnection = false;
-
-        // main game loop (TODO! game terminal condition not implemented yet)
-        while (browser.IsConnected && !gamePage.IsClosed)
-        {
-            if (await gameFrontendHandler.ItsMyTurn())
-            {
-                Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is at turn");
-
-                DecisionContextManager decisionContextManager = new DecisionContextManager();
-                CandidateAction? nextAction = null;
-
-                do
+                foreach (var (page, index) in pages.Select((p, i) => (p, i)))
                 {
-                    // scrape current game state...
-                    var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
+                    Console.WriteLine(
+                        $"{index}: {page.Url} | {await page.TitleAsync()}");
+                }
 
-                    // ...and update decision context
-                    await decisionContextManager.Update(gameFrontendHandler, nextAction);
-
-                    // TODO! at this point a transition can be created and stored in the replay buffer
-
-                    // end TODO!
-
-                    // determine next legal actions...
-                    var nextActions = await decisionContextManager.GetCandidateActions(gameFrontendHandler);
-
-                    Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} can choose from:");
-                    foreach (var n in nextActions)
-                        Console.WriteLine(n.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
-                    Console.WriteLine("end choice");
-
-                    if (nextActions.Count > 0)
-                    {
-                        // ...to encode current state
-                        var stateFeatures = stateEncoder.Encode(gameState, decisionContextManager.DecisionContext);
-
-                        // ...and let action selector determine the best action
-                        int bestActionIndex = ActionSelector.ChooseBestAction(policyNetwork, stateFeatures, nextActions);
-                        nextAction = nextActions[bestActionIndex];
-
-                        // TODO! Implement automated action execution here!
-                        // atm the bot prints the action description on console and waits for execution 
-                        Console.Write(nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
-                        Console.ReadLine();
-
-                        // save game state and decision context
-                    }
-                    else
-                    {
-                        nextAction = null;
-                    }
-                } while (nextAction != null);
-
-                // TODO! train neural network here
-                // Diese drei Zeilen müssen nach DqnTrainer.TrainBatch(...)
-                // ausgeführt werden, sobald der Trainingsschritt implementiert ist.
-                policyNetwork!.save(policyNetworkPath);
-                targetNetwork!.save(targetNetworkPath);
-                optimizer!.save_state_dict(optimizerPath);
+                Console.Write("Enter the Boardzilla tab number: ");
+                tabIndex = int.Parse(Console.ReadLine() ?? "0");
             }
-            else
+
+            if (tabIndex < 0 || tabIndex >= pages.Count)
             {
-                Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is not at turn");
+                throw new InvalidOperationException(
+                    $"Tab {tabIndex} is not available.");
             }
 
-            await Task.Delay(250);
-        }
+            var gamePage = pages[tabIndex];
 
-        Console.WriteLine("Connection lost. Reconnecting...");
+            var gameFrontendHandler = await GameFrontendHandler.Initialize(gamePage);
+            while (gameFrontendHandler.NeedsDecision() != null)
+            {
+                var neededDecision = gameFrontendHandler.NeedsDecision()!;
+
+                Console.WriteLine(neededDecision.GetPrompt());
+                await gameFrontendHandler.MakeDecision(Console.ReadLine());
+            }
+
+            if (!gameFrontendHandler.ReadyToPlay())
+            {
+                Console.WriteLine("I am not ready to play");
+                shutdownRequested = true;
+                continue;
+            }
+
+            Console.WriteLine($"Playing {gameFrontendHandler.GetPlayerName()} in this game...");
+
+            while (!await gameFrontendHandler.IsGameStarted())
+            {
+                Console.WriteLine("Game has not yet started");
+                await Task.Delay(250);
+            }
+
+            Console.WriteLine("Game starts");
+
+            if (firstConnection)
+            {
+                // initialize neural network related variables
+                stateEncoder = new StateEncoder(gameFrontendHandler.GetNumPlayers());
+
+                policyNetwork = new ActionQNetwork(
+                    stateFeatureCount: stateEncoder.FeatureCount,
+                    actionFeatureCount: ActionEncoder.FeatureCount,
+                    hiddenSize: 128
+                ).to(device);
+
+                if (File.Exists(policyNetworkPath))
+                {
+                    policyNetwork.load(policyNetworkPath);
+                    Console.WriteLine($"policy-network loaded: {policyNetworkPath}");
+                }
+
+                targetNetwork = new ActionQNetwork(
+                    stateFeatureCount: stateEncoder.FeatureCount,
+                    actionFeatureCount: ActionEncoder.FeatureCount,
+                    hiddenSize: 128
+                ).to(device);
+
+                if (File.Exists(targetNetworkPath))
+                {
+                    targetNetwork.load(targetNetworkPath);
+                    Console.WriteLine($"target-network loaded: {targetNetworkPath}");
+                }
+
+                //targetNetwork.load_state_dict(policyNetwork.state_dict());
+
+                // Adam will update the network weights during training.
+                optimizer = torch.optim.Adam(policyNetwork.parameters(), lr: 0.0001);
+                if (File.Exists(optimizerPath))
+                {
+                    optimizer.load_state_dict(optimizerPath);
+                    Console.WriteLine($"optimizer loaded: {optimizerPath}");
+                }
+
+                rewardCalculator = new RewardCalculator();
+                replayBuffer = new ReplayBuffer(5000);
+                // end neural network initialization
+            }
+
+            firstConnection = false;
+
+            // main game loop (TODO! game terminal condition not implemented yet)
+            while (browser.IsConnected && !gamePage.IsClosed)
+            {
+                if (await gameFrontendHandler.ItsMyTurn())
+                {
+                    Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is at turn");
+
+                    DecisionContextManager decisionContextManager = new DecisionContextManager();
+                    CandidateAction? nextAction = null;
+
+                    do
+                    {
+                        // scrape current game state...
+                        var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
+
+                        // ...and update decision context
+                        await decisionContextManager.Update(gameFrontendHandler, nextAction);
+
+                        // determine next legal actions...
+                        var nextActions = await decisionContextManager.GetCandidateActions(gameFrontendHandler);
+
+                        Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} can choose from:");
+                        foreach (var n in nextActions)
+                            Console.WriteLine(n.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
+                        Console.WriteLine("end choice");
+
+                        if (nextActions.Count > 0)
+                        {
+                            // ...to encode current state and next actions
+                            var stateFeatures = stateEncoder!.Encode(gameState, decisionContextManager.DecisionContext);
+                            var nextActionsFeatures = nextActions.Select(action => ActionEncoder.Encode(action)).ToList();
+
+                            // TODO! at this point a transition can be created and stored in the replay buffer
+                            if (pendingTransition != null)
+                            {
+                                float reward = rewardCalculator!.CalculateReward(pendingTransition.State, gameState);
+
+                                var transition = new ReplayTransition(
+                                    StateFeatures: pendingTransition.StateFeatures,
+                                    ChosenActionFeatures: pendingTransition.ChosenActionFeatures,
+                                    Reward: reward,
+                                    NextStateFeatures: stateFeatures,
+                                    NextLegalActionsFeatures: nextActionsFeatures,
+                                    IsTerminal: false);
+                                replayBuffer!.Add(transition);
+
+                                // TODO! determine a more reasonable count value
+                                if (replayBuffer.Count >= 100)
+                                {
+                                    ReplayTransition[] batch = replayBuffer.Sample(64);
+
+                                    DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
+                                }
+
+                                // remove pending transition because its final now
+                                pendingTransition = null;
+                            }
+                            // end TODO!
+
+                            // ...and let action selector determine the best action
+                            int bestActionIndex = ActionSelector.ChooseBestAction(policyNetwork!, stateFeatures, nextActionsFeatures);
+                            nextAction = nextActions[bestActionIndex];
+
+                            // TODO! Implement automated action execution here!
+                            // atm the bot prints the action description on console and waits for execution 
+                            Console.Write(nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
+                            Console.ReadLine();
+
+                            // save game state and decision context
+                            pendingTransition = new PendingReplayTransition(State: gameState, StateFeatures: stateFeatures, ChosenActionFeatures: nextActionsFeatures[bestActionIndex]);
+                        }
+                        else
+                        {
+                            nextAction = null;
+                        }
+                    } while (nextAction != null);
+
+                    // TODO! train neural network here
+                    // Diese drei Zeilen müssen nach DqnTrainer.TrainBatch(...)
+                    // ausgeführt werden, sobald der Trainingsschritt implementiert ist.
+                    policyNetwork!.save(policyNetworkPath);
+                    targetNetwork!.save(targetNetworkPath);
+                    optimizer!.save_state_dict(optimizerPath);
+                }
+                else
+                {
+                    Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is not at turn");
+                }
+
+                await Task.Delay(250);
+            }
+
+            Console.WriteLine("Connection lost. Reconnecting...");
         }
         catch (PlaywrightException ex)
         {
