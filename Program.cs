@@ -113,6 +113,10 @@ while (true)
                     // ...and update decision context
                     await decisionContextManager.Update(gameFrontendHandler, nextAction);
 
+                    // TODO! at this point a transition can be created and stored in the replay buffer
+
+                    // end TODO!
+
                     // determine next legal actions...
                     var nextActions = await decisionContextManager.GetCandidateActions(gameFrontendHandler);
 
@@ -130,8 +134,12 @@ while (true)
                         int bestActionIndex = ActionSelector.ChooseBestAction(policyNetwork, stateFeatures, nextActions);
                         nextAction = nextActions[bestActionIndex];
 
+                        // TODO! Implement automated action execution here!
+                        // atm the bot prints the action description on console and waits for execution 
                         Console.Write(nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
                         Console.ReadLine();
+
+                        // save game state and decision context
                     }
                     else
                     {
@@ -157,6 +165,10 @@ while (true)
     {
         Console.WriteLine($"Playwright connection failed: {ex.Message}");
         Console.WriteLine("Retrying in one second...");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Exception occurred: {ex.Message}");
     }
 
     await Task.Delay(1000);
