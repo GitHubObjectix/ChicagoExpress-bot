@@ -21,6 +21,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
 };
 
 // bot related variables
+DecisionContextManager? decisionContextManager = null;
 StateEncoder? stateEncoder = null;
 ActionQNetwork? policyNetwork = null;
 ActionQNetwork? targetNetwork = null;
@@ -33,8 +34,36 @@ ReplayBuffer? replayBuffer = null;
 var device = torch.CPU;
 
 // persistence related variables
-string checkpointDirectory =
-    Path.Combine(AppContext.BaseDirectory, "checkpoints");
+string? storagePath = null;
+
+for (int i = 0; i < args.Length; i++)
+{
+    string argument = args[i];
+
+    if (argument is "--storage" or "-s")
+    {
+        if (i + 1 >= args.Length || string.IsNullOrWhiteSpace(args[i + 1]))
+        {
+            throw new ArgumentException(
+                $"Missing storage directory after '{argument}'.");
+        }
+
+        storagePath = args[++i];
+    }
+    else if (argument.StartsWith("--storage=", StringComparison.Ordinal))
+    {
+        storagePath = argument["--storage=".Length..];
+    }
+    else if (argument.StartsWith("-s=", StringComparison.Ordinal))
+    {
+        storagePath = argument["-s=".Length..];
+    }
+}
+
+string checkpointDirectory = Path.GetFullPath(
+    string.IsNullOrWhiteSpace(storagePath)
+        ? AppContext.BaseDirectory
+        : storagePath);
 Directory.CreateDirectory(checkpointDirectory);
 
 string policyNetworkPath =
@@ -164,18 +193,16 @@ try
                 {
                     Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is at turn");
 
-                    DecisionContextManager decisionContextManager = new DecisionContextManager();
+                    if (decisionContextManager == null)
+                        decisionContextManager = new DecisionContextManager();
                     CandidateAction? nextAction = null;
 
                     do
                     {
-                        // scrape current game state...
-                        var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
-
-                        // ...and update decision context
+                        // update decision context...
                         await decisionContextManager.Update(gameFrontendHandler, nextAction);
 
-                        // determine next legal actions...
+                        // ...and determine next legal actions...
                         var nextActions = await decisionContextManager.GetCandidateActions(gameFrontendHandler);
 
                         Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} can choose from:");
@@ -185,13 +212,18 @@ try
 
                         if (nextActions.Count > 0)
                         {
+                            // if there are legal actions
+                            // scrape current game state...
+                            var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
+
                             // ...to encode current state and next actions
                             var stateFeatures = stateEncoder!.Encode(gameState, decisionContextManager.DecisionContext);
                             var nextActionsFeatures = nextActions.Select(action => ActionEncoder.Encode(action)).ToList();
 
-                            // TODO! at this point a transition can be created and stored in the replay buffer
                             if (pendingTransition != null)
                             {
+                                // if there is a pending action from previous move to finalize, store it in the replay buffer
+
                                 float reward = rewardCalculator!.CalculateReward(pendingTransition.State, gameState);
 
                                 var transition = new ReplayTransition(
@@ -209,12 +241,15 @@ try
                                     ReplayTransition[] batch = replayBuffer.Sample(64);
 
                                     DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
+
+                                    policyNetwork!.save(policyNetworkPath);
+                                    targetNetwork!.save(targetNetworkPath);
+                                    optimizer!.save_state_dict(optimizerPath);
                                 }
 
-                                // remove pending transition because its final now
+                                // and remove pending transition because its final now
                                 pendingTransition = null;
                             }
-                            // end TODO!
 
                             // ...and let action selector determine the best action
                             int bestActionIndex = ActionSelector.ChooseBestAction(policyNetwork!, stateFeatures, nextActionsFeatures);
@@ -230,23 +265,26 @@ try
                         }
                         else
                         {
+                            decisionContextManager = null;
                             nextAction = null;
                         }
                     } while (nextAction != null);
-
-                    // TODO! train neural network here
-                    // Diese drei Zeilen müssen nach DqnTrainer.TrainBatch(...)
-                    // ausgeführt werden, sobald der Trainingsschritt implementiert ist.
-                    policyNetwork!.save(policyNetworkPath);
-                    targetNetwork!.save(targetNetworkPath);
-                    optimizer!.save_state_dict(optimizerPath);
                 }
                 else
                 {
                     Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is not at turn");
                 }
 
+                // TODO! Implement announcement pop-up dismissal and game end detection
+                // Idea: use a timeout exception when waiting for player-controls to become visible
+                //if (await gameFrontendHandler.IsDividendPhasePopupVisible(250))
+                //{
+                //    Console.Write("")
+                //}
+
                 await Task.Delay(250);
+
+                // TODO! Check if announcement-modal-popup is visible
             }
 
             Console.WriteLine("Connection lost. Reconnecting...");

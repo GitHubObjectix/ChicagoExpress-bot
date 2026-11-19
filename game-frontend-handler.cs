@@ -111,17 +111,34 @@ namespace chicago_express_bot
 
         public async Task<bool> ItsMyTurn()
         {
+            bool itsMyTurn = false;
+
             if (playerButton != null)
             {
                 // local game
                 string? style = await playerButton!.GetAttributeAsync("style");
-                return style?.Contains("2px solid black") == true;
+                itsMyTurn = style?.Contains("2px solid black") == true;
             }
             else
             {
                 // server game
-                return await uiFrame.Locator("div[class^='player-controls '] form").CountAsync() > 0;
+                itsMyTurn = await uiFrame.Locator("div[class^='player-controls '] form").CountAsync() > 0;
             }
+
+            if (itsMyTurn)
+            {
+                // wait until player-controls are visible to ensure that
+                // all other elements are visible so that game state can be scraped consistently
+                var playerControls = uiFrame.Locator("div.player-controls");
+
+                await playerControls.WaitForAsync(new LocatorWaitForOptions
+                {
+                    State = WaitForSelectorState.Visible,
+                    Timeout = 10000
+                });
+            }
+
+            return itsMyTurn;
         }
 
         public async Task<List<string>> GetPossibleActions()
@@ -301,5 +318,25 @@ namespace chicago_express_bot
             return candidateActions;
         }
 
+        public async Task<bool> IsDividendPhasePopupVisible(int timeout)
+        {
+            bool isVisible = false;
+
+            var announcement = uiFrame.Locator("div#announcement.modal-popup");
+            try
+            {
+                await announcement.WaitForAsync(new LocatorWaitForOptions
+                {
+                    State = WaitForSelectorState.Visible,
+                    Timeout = timeout
+                });
+            }
+            catch (TimeoutException)
+            {
+                isVisible = false;
+            }
+
+            return isVisible;
+        }
     }
 }

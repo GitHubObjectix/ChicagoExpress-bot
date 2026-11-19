@@ -25,11 +25,14 @@ namespace chicago_express_bot
             foreach (var (company, c) in ChicagoExpressSetup.RailwayCompanies.Select(
                     (company, index) => (company, index)))
             {
-                int incomePerShare = (int) Math.Ceiling((double) gameState.Companies[c].Income / (double)(company.Stocks - gameState.Companies[c].SharesAvailable));
-                playerValue += gameState.Players[gameState.CurrentPlayer].Shares[c];
+                if (company.Stocks - gameState.Companies[c].SharesAvailable > 0)
+                {
+                    int incomePerShare = (int)Math.Ceiling((double)gameState.Companies[c].Income / (double)(company.Stocks - gameState.Companies[c].SharesAvailable));
+                    playerValue += gameState.Players[gameState.CurrentPlayer].Shares[c] * incomePerShare;
+                }
             }
 
-            return 0.0f;
+            return playerValue;
         }
     }
 }
