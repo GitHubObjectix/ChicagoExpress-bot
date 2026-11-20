@@ -12,6 +12,7 @@ int tabIndex = 0;
 int playerIndex = 0;
 bool firstConnection = true;
 bool shutdownRequested = false;
+bool gameEnded = false;
 
 Console.CancelKeyPress += (_, eventArgs) =>
 {
@@ -32,6 +33,24 @@ PendingReplayTransition? pendingTransition = null;
 ReplayBuffer? replayBuffer = null;
 
 var device = torch.CPU;
+
+static bool AskYesNo(string question)
+{
+    while (true)
+    {
+        Console.Write($"{question} (y/n): ");
+
+        string? input = Console.ReadLine()?.Trim();
+
+        if (string.Equals(input, "y", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (string.Equals(input, "n", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        Console.WriteLine("invalid input");
+    }
+}
 
 // persistence related variables
 string? storagePath = null;
@@ -187,104 +206,118 @@ try
             firstConnection = false;
 
             // main game loop (TODO! game terminal condition not implemented yet)
-            while (browser.IsConnected && !gamePage.IsClosed)
+            while (browser.IsConnected && !gamePage.IsClosed && !gameEnded)
             {
-                if (await gameFrontendHandler.ItsMyTurn())
+                try
                 {
-                    Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is at turn");
 
-                    if (decisionContextManager == null)
-                        decisionContextManager = new DecisionContextManager();
-                    CandidateAction? nextAction = null;
-
-                    do
+                    if (await gameFrontendHandler.ItsMyTurn())
                     {
-                        // update decision context...
-                        await decisionContextManager.Update(gameFrontendHandler, nextAction);
+                        Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is at turn");
 
-                        // ...and determine next legal actions...
-                        var nextActions = await decisionContextManager.GetCandidateActions(gameFrontendHandler);
+                        if (decisionContextManager == null)
+                            decisionContextManager = new DecisionContextManager();
+                        CandidateAction? nextAction = null;
 
-                        Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} can choose from:");
-                        foreach (var n in nextActions)
-                            Console.WriteLine(n.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
-                        Console.WriteLine("end choice");
-
-                        if (nextActions.Count > 0)
+                        do
                         {
-                            // if there are legal actions
-                            // scrape current game state...
-                            var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
+                            // update decision context...
+                            await decisionContextManager.Update(gameFrontendHandler, nextAction);
 
-                            // ...to encode current state and next actions
-                            var stateFeatures = stateEncoder!.Encode(gameState, decisionContextManager.DecisionContext);
-                            var nextActionsFeatures = nextActions.Select(action => ActionEncoder.Encode(action)).ToList();
+                            // ...and determine next legal actions...
+                            var nextActions = await decisionContextManager.GetCandidateActions(gameFrontendHandler);
 
-                            if (pendingTransition != null)
+                            Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} can choose from:");
+                            foreach (var n in nextActions)
+                                Console.WriteLine(n.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
+                            Console.WriteLine("end choice");
+
+                            if (nextActions.Count > 0)
                             {
-                                // if there is a pending action from previous move to finalize, store it in the replay buffer
+                                // if there are legal actions
+                                // scrape current game state...
+                                var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
 
-                                float reward = rewardCalculator!.CalculateReward(pendingTransition.State, gameState);
+                                // ...to encode current state and next actions
+                                var stateFeatures = stateEncoder!.Encode(gameState, decisionContextManager.DecisionContext);
+                                var nextActionsFeatures = nextActions.Select(action => ActionEncoder.Encode(action)).ToList();
 
-                                var transition = new ReplayTransition(
-                                    StateFeatures: pendingTransition.StateFeatures,
-                                    ChosenActionFeatures: pendingTransition.ChosenActionFeatures,
-                                    Reward: reward,
-                                    NextStateFeatures: stateFeatures,
-                                    NextLegalActionsFeatures: nextActionsFeatures,
-                                    IsTerminal: false);
-                                replayBuffer!.Add(transition);
-
-                                // TODO! determine a more reasonable count value
-                                if (replayBuffer.Count >= 100)
+                                if (pendingTransition != null)
                                 {
-                                    ReplayTransition[] batch = replayBuffer.Sample(64);
+                                    // if there is a pending action from previous move to finalize, store it in the replay buffer
+                                    float reward = rewardCalculator!.CalculateReward(pendingTransition.State, gameState);
 
-                                    DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
+                                    var transition = new ReplayTransition(
+                                        StateFeatures: pendingTransition.StateFeatures,
+                                        ChosenActionFeatures: pendingTransition.ChosenActionFeatures,
+                                        Reward: reward,
+                                        NextStateFeatures: stateFeatures,
+                                        NextLegalActionsFeatures: nextActionsFeatures,
+                                        IsTerminal: false);
+                                    replayBuffer!.Add(transition);
 
-                                    policyNetwork!.save(policyNetworkPath);
-                                    targetNetwork!.save(targetNetworkPath);
-                                    optimizer!.save_state_dict(optimizerPath);
+                                    Console.WriteLine($"Put transition into buffer. Buffer size is {replayBuffer.Count}");
+
+                                    // TODO! determine a more reasonable count value
+                                    if (replayBuffer.Count >= 100)
+                                    {
+                                        ReplayTransition[] batch = replayBuffer.Sample(64);
+
+                                        DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
+
+                                        policyNetwork!.save(policyNetworkPath);
+                                        targetNetwork!.save(targetNetworkPath);
+                                        optimizer!.save_state_dict(optimizerPath);
+                                    }
+
+                                    // and remove pending transition because its final now
+                                    pendingTransition = null;
                                 }
 
-                                // and remove pending transition because its final now
-                                pendingTransition = null;
+                                // ...and let action selector determine the best action
+                                int bestActionIndex = ActionSelector.ChooseBestAction(policyNetwork!, stateFeatures, nextActionsFeatures);
+                                nextAction = nextActions[bestActionIndex];
+
+                                // TODO! Implement automated action execution here!
+                                // atm the bot prints the action description on console and waits for execution 
+                                Console.Write(nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
+                                Console.ReadLine();
+
+                                // save game state and decision context
+                                pendingTransition = new PendingReplayTransition(State: gameState, StateFeatures: stateFeatures, ChosenActionFeatures: nextActionsFeatures[bestActionIndex]);
                             }
-
-                            // ...and let action selector determine the best action
-                            int bestActionIndex = ActionSelector.ChooseBestAction(policyNetwork!, stateFeatures, nextActionsFeatures);
-                            nextAction = nextActions[bestActionIndex];
-
-                            // TODO! Implement automated action execution here!
-                            // atm the bot prints the action description on console and waits for execution 
-                            Console.Write(nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
-                            Console.ReadLine();
-
-                            // save game state and decision context
-                            pendingTransition = new PendingReplayTransition(State: gameState, StateFeatures: stateFeatures, ChosenActionFeatures: nextActionsFeatures[bestActionIndex]);
-                        }
-                        else
-                        {
-                            decisionContextManager = null;
-                            nextAction = null;
-                        }
-                    } while (nextAction != null);
+                            else
+                            {
+                                decisionContextManager = null;
+                                nextAction = null;
+                            }
+                        } while (nextAction != null);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is not at turn");
+                    }
                 }
-                else
+                catch (TimeoutException)
                 {
-                    Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is not at turn");
+                    // this exception is hit when the bot logic checks for visibility of player-controls div
+                    // if there are announcements visible the player-controls div stays hidden until the announcement is dismissed
+                    bool isPopupVisible = await gameFrontendHandler.IsPopupVisible(100);
+                    if (isPopupVisible)
+                    {
+                        Console.Write("There is a pop-up visible");
+                        Console.ReadLine();
+                    }
+                    else
+                    {
+                        // if player-controls are not visible and also no pop-up then the game ended
+                        if (AskYesNo("Has game ended?"))
+                            gameEnded = true;
+                        // TODO! determine how to finalize pending transitions
+                    }
                 }
-
-                // TODO! Implement announcement pop-up dismissal and game end detection
-                // Idea: use a timeout exception when waiting for player-controls to become visible
-                //if (await gameFrontendHandler.IsDividendPhasePopupVisible(250))
-                //{
-                //    Console.Write("")
-                //}
 
                 await Task.Delay(250);
-
-                // TODO! Check if announcement-modal-popup is visible
             }
 
             Console.WriteLine("Connection lost. Reconnecting...");

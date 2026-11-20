@@ -106,7 +106,7 @@ namespace chicago_express_bot
 
         public async Task<bool> IsGameStarted()
         {
-            return await uiFrame.Locator("div[class^='player-controls']").CountAsync() > 0;
+            return await uiFrame.Locator("div[class='player-controls *']").CountAsync() > 0;
         }
 
         public async Task<bool> ItsMyTurn()
@@ -122,21 +122,19 @@ namespace chicago_express_bot
             else
             {
                 // server game
-                itsMyTurn = await uiFrame.Locator("div[class^='player-controls '] form").CountAsync() > 0;
+                itsMyTurn = await uiFrame.Locator("div[class='player-controls *'] form").CountAsync() > 0;
             }
 
-            if (itsMyTurn)
+            // wait until player-controls are visible to ensure that
+            // all other elements are visible so that game state can be scraped consistently
+            // do this independently of whether its the bots turn to be able to detect announcements
+            var playerControls = uiFrame.Locator("div[class='player-controls *']");
+
+            await playerControls.WaitForAsync(new LocatorWaitForOptions
             {
-                // wait until player-controls are visible to ensure that
-                // all other elements are visible so that game state can be scraped consistently
-                var playerControls = uiFrame.Locator("div.player-controls");
-
-                await playerControls.WaitForAsync(new LocatorWaitForOptions
-                {
-                    State = WaitForSelectorState.Visible,
-                    Timeout = 10000
-                });
-            }
+                State = WaitForSelectorState.Visible,
+                Timeout = 2000
+            });
 
             return itsMyTurn;
         }
@@ -145,9 +143,11 @@ namespace chicago_express_bot
         {
             List<string> possibleActions = new List<string>();
 
+            // first check if its the bot's turn
+            // (basically are the player-controls visible and do they have actions to choose from)
             if (await ItsMyTurn())
             {
-                var actionForms = uiFrame.Locator("div[class^='player-controls '] form");
+                var actionForms = uiFrame.Locator("div[class='player-controls *'] form");
                 var actionCount = await actionForms!.CountAsync();
 
                 for (int i = 0; i < actionCount; ++i)
@@ -318,7 +318,7 @@ namespace chicago_express_bot
             return candidateActions;
         }
 
-        public async Task<bool> IsDividendPhasePopupVisible(int timeout)
+        public async Task<bool> IsPopupVisible(int timeout)
         {
             bool isVisible = false;
 
@@ -330,6 +330,8 @@ namespace chicago_express_bot
                     State = WaitForSelectorState.Visible,
                     Timeout = timeout
                 });
+
+                isVisible = true;
             }
             catch (TimeoutException)
             {
