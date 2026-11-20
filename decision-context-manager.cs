@@ -124,11 +124,11 @@ namespace chicago_express_bot
                 {
                     if (DecisionContext.SelectedGauge == 1)
                     {
-                        decisionContext.Phase = DecisionPhase.SelectConstructionHexOrSkip;
+                        decisionContext.Phase = DecisionPhase.SelectDevelopmentHexOrSkip;
                     }
                     else if (DecisionContext.SelectedGauge == 2)
                     {
-                        decisionContext.Phase = DecisionPhase.SelectDevelopmentHexOrSkip;
+                        decisionContext.Phase = DecisionPhase.SelectConstructionHexOrSkip;
                     }
                     else
                     {

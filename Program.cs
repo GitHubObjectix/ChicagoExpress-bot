@@ -28,6 +28,7 @@ ActionQNetwork? policyNetwork = null;
 ActionQNetwork? targetNetwork = null;
 TorchSharp.Modules.Adam? optimizer = null;
 RewardCalculator? rewardCalculator = null;
+int trainingSteps = 0;
 
 PendingReplayTransition? pendingTransition = null;
 ReplayBuffer? replayBuffer = null;
@@ -187,8 +188,10 @@ try
                     targetNetwork.load(targetNetworkPath);
                     Console.WriteLine($"target-network loaded: {targetNetworkPath}");
                 }
-
-                //targetNetwork.load_state_dict(policyNetwork.state_dict());
+                else
+                {
+                    targetNetwork.load_state_dict(policyNetwork.state_dict());
+                }
 
                 // Adam will update the network weights during training.
                 optimizer = torch.optim.Adam(policyNetwork.parameters(), lr: 0.0001);
@@ -259,11 +262,17 @@ try
                                     Console.WriteLine($"Put transition into buffer. Buffer size is {replayBuffer.Count}");
 
                                     // TODO! determine a more reasonable count value
-                                    if (replayBuffer.Count >= 100)
+                                    if (replayBuffer.Count >= 50)
                                     {
-                                        ReplayTransition[] batch = replayBuffer.Sample(64);
+                                        ReplayTransition[] batch = replayBuffer.Sample(32);
 
                                         DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
+
+                                        if (++trainingSteps >= 50)
+                                        {
+                                            targetNetwork!.load_state_dict(policyNetwork!.state_dict());
+                                            trainingSteps = 0;
+                                        }
 
                                         policyNetwork!.save(policyNetworkPath);
                                         targetNetwork!.save(targetNetworkPath);
