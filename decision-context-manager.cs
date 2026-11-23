@@ -17,29 +17,8 @@ namespace chicago_express_bot
         {
             if (previouslySelectedAction != null && decisionContext != null)
             {
-                switch (previouslySelectedAction.Type)
-                {
-                    case ActionType.SelectGauge:
-                        decisionContext.SelectedGauge = previouslySelectedAction.GaugeIndex; break;
-                    case ActionType.Skip:
-                        break;
-                    case ActionType.SelectAuctionCompany:
-                        decisionContext.SelectedCompany = previouslySelectedAction.CompanyIndex; break;
-                    case ActionType.Bid:
-                        decisionContext.CurrentHighBid = previouslySelectedAction.BidAmount; break;
-                    case ActionType.Pass:
-                        break;
-                    case ActionType.DevelopHex:
-                        break;
-                    case ActionType.SelectConstructionCompany:
-                        decisionContext.SelectedCompany = previouslySelectedAction.CompanyIndex; break;
-                    case ActionType.ConstructHex:
-                        break;
-                }
+                previouslySelectedAction.Enrich(decisionContext);
             }
-
-            // TODO! in a local run of the game the player-controls are always visible
-            // the code needs to check if the bot player is still at turn
 
             EncodePhase(await gameFrontendHandler.GetPossibleActions());
         }

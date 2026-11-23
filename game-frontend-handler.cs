@@ -205,15 +205,15 @@ namespace chicago_express_bot
 
                     if (action == "auction")
                     {
-                        candidateActions.Add(new CandidateAction(ActionType.SelectGauge, GaugeIndex: 0));
+                        candidateActions.Add(new SelectGaugeAction(ActionType.SelectGauge, GaugeIndex: 0));
                     }
                     else if (action == "development")
                     {
-                        candidateActions.Add(new CandidateAction(ActionType.SelectGauge, GaugeIndex: 1));
+                        candidateActions.Add(new SelectGaugeAction(ActionType.SelectGauge, GaugeIndex: 1));
                     }
                     else if (action == "route-construction")
                     {
-                        candidateActions.Add(new CandidateAction(ActionType.SelectGauge, GaugeIndex: 2));
+                        candidateActions.Add(new SelectGaugeAction(ActionType.SelectGauge, GaugeIndex: 2));
                     }
                     else
                     {
@@ -239,10 +239,10 @@ namespace chicago_express_bot
 
             for (int v = currentValue; v <= maxValue; ++v)
             {
-                candidateActions.Add(new CandidateAction(ActionType.Bid, GaugeIndex: decisionContext.SelectedGauge, CompanyIndex: decisionContext.SelectedCompany, BidAmount: v));
+                candidateActions.Add(new BidAction(ActionType.Bid, BidAmount: v));
             }
 
-            candidateActions.Add(new CandidateAction(ActionType.Pass, GaugeIndex: decisionContext.SelectedGauge, CompanyIndex: decisionContext.SelectedCompany));
+            candidateActions.Add(new PassAction(ActionType.Pass));
 
             return candidateActions;
         }
@@ -269,14 +269,12 @@ namespace chicago_express_bot
                     ? ActionType.SelectAuctionCompany
                     : ActionType.SelectConstructionCompany;
 
-                candidateActions.Add(new CandidateAction(
+                candidateActions.Add(new SelectCompanyAction(
                     isAuction ? ActionType.SelectAuctionCompany : ActionType.SelectConstructionCompany,
-                    GaugeIndex: decisionContext.SelectedGauge,
                     CompanyIndex: companyIndex));
             }
 
-            candidateActions.Add(new CandidateAction(ActionType.Skip,
-                GaugeIndex: decisionContext!.SelectedGauge));
+            candidateActions.Add(new SkipAction(ActionType.Skip));
 
             return candidateActions;
         }
@@ -303,17 +301,13 @@ namespace chicago_express_bot
                     int row = int.Parse(match.Groups[1].Value);
                     int column = int.Parse(match.Groups[2].Value);
 
-                    candidateActions.Add(new CandidateAction(
+                    candidateActions.Add(new SelectFieldAction(
                         isDevelopment ? ActionType.DevelopHex : ActionType.ConstructHex,
-                        GaugeIndex: decisionContext!.SelectedGauge,
-                        CompanyIndex: decisionContext!.SelectedCompany,
                         RowIndex: row, ColumnIndex: column));
                 }
             }
 
-            candidateActions.Add(new CandidateAction(ActionType.Skip,
-                GaugeIndex: decisionContext!.SelectedGauge,
-                CompanyIndex: decisionContext!.SelectedCompany));
+            candidateActions.Add(new SkipAction(ActionType.Skip));
 
             return candidateActions;
         }

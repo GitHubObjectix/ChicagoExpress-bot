@@ -263,12 +263,18 @@ namespace chicago_express_bot
             int bidOffset = columnOffset + ChicagoExpressSetup.ColumnCount();
 
             EncodeHelper.SetOneHot(result, typeOffset, Enum.GetValues<ActionType>().Length, (int)action.Type);
-            EncodeHelper.SetOneHot(result, gaugeOffset, ChicagoExpressSetup.Gauges, action.GaugeIndex);
-            EncodeHelper.SetOneHot(result, companyOffset, ChicagoExpressSetup.RailwayCompanies.Length, action.CompanyIndex);
-            EncodeHelper.SetOneHot(result, rowOffset, ChicagoExpressSetup.RowCount(), action.RowIndex);
-            EncodeHelper.SetOneHot(result, columnOffset, ChicagoExpressSetup.ColumnCount(), action.ColumnIndex);
+            if (action is SelectGaugeAction)
+                EncodeHelper.SetOneHot(result, gaugeOffset, ChicagoExpressSetup.Gauges, ((SelectGaugeAction) action).GaugeIndex);
+            if (action is SelectCompanyAction)
+                EncodeHelper.SetOneHot(result, companyOffset, ChicagoExpressSetup.RailwayCompanies.Length, ((SelectCompanyAction) action).CompanyIndex);
+            if (action is SelectFieldAction)
+            {
+                EncodeHelper.SetOneHot(result, rowOffset, ChicagoExpressSetup.RowCount(), ((SelectFieldAction) action).RowIndex);
+                EncodeHelper.SetOneHot(result, columnOffset, ChicagoExpressSetup.ColumnCount(), ((SelectFieldAction) action).ColumnIndex);
+            }
             // TODO! consider to change encoding of bid amount
-            result[bidOffset] = Math.Clamp(action.BidAmount / 100f, 0f, 1f);
+            if (action is BidAction)
+                result[bidOffset] = Math.Clamp(((BidAction) action).BidAmount / 100f, 0f, 1f);
 
             return result;
         }

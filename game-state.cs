@@ -86,42 +86,98 @@ namespace chicago_express_bot
         ConstructHex
     }
 
-    public sealed record CandidateAction(
-        ActionType Type,
-        int GaugeIndex = -1,
-        int CompanyIndex = -1,
-        int RowIndex = -1,
-        int ColumnIndex = -1,
-        int BidAmount = 0
-    )
+    public abstract record CandidateAction(ActionType Type)
     {
-        public string GetVerboseAction(string playerName)
+        public abstract string GetVerboseAction(string playerName);
+        public abstract void Enrich(DecisionContext decisionContext);
+    }
+
+    public record SelectGaugeAction(ActionType Type, int GaugeIndex = -1)
+        : CandidateAction(Type)
+    {
+        public override string GetVerboseAction(string playerName)
         {
-            string verboseAction = string.Empty;
-
-            switch (Type)
-            {
-                case ActionType.SelectGauge:
-                    return $"{playerName} selects action gauge {GaugeIndex}";
-                case ActionType.Skip:
-                    return $"{playerName} skips the move";
-                case ActionType.SelectAuctionCompany:
-                    return $"{playerName} selects railway company {ChicagoExpressSetup.RailwayCompanies[CompanyIndex].Name} to auction off one of her shares";
-                case ActionType.Bid:
-                    return $"{playerName} bids {BidAmount} $";
-                case ActionType.Pass:
-                    return $"{playerName} passes";
-                case ActionType.DevelopHex:
-                    return $"{playerName} develops field hex-{RowIndex}-{ColumnIndex}";
-                case ActionType.SelectConstructionCompany:
-                    return $"{playerName} selects railway company {ChicagoExpressSetup.RailwayCompanies[CompanyIndex].Name} for construction";
-                case ActionType.ConstructHex:
-                    return $"{playerName} constructs field hex-{RowIndex}-{ColumnIndex}";
-            }
-
-            return verboseAction;
+            return $"{playerName} selects action gauge {GaugeIndex}";
         }
-    }   
+
+        public override void Enrich(DecisionContext decisionContext)
+        {
+            decisionContext.SelectedGauge = GaugeIndex;
+        }
+    }
+
+    public record SkipAction(ActionType Type)
+        : CandidateAction(Type)
+    {
+        public override string GetVerboseAction(string playerName)
+        {
+            return $"{playerName} skips the move";
+        }
+
+        public override void Enrich(DecisionContext decisionContext)
+        {
+        }
+    }
+
+    public record SelectCompanyAction(ActionType Type, int CompanyIndex)
+        : CandidateAction(Type)
+    {
+        public override string GetVerboseAction(string playerName)
+        {
+            if (Type == ActionType.SelectAuctionCompany)
+                return $"{playerName} selects railway company {ChicagoExpressSetup.RailwayCompanies[CompanyIndex].Name} to auction off one of her shares";
+            else
+                return $"{playerName} selects railway company {ChicagoExpressSetup.RailwayCompanies[CompanyIndex].Name} for construction";
+        }
+
+        public override void Enrich(DecisionContext decisionContext)
+        {
+            decisionContext.SelectedCompany = CompanyIndex;
+        }
+    }
+
+    public record BidAction(ActionType Type, int BidAmount)
+        : CandidateAction(Type)
+    {
+        public override string GetVerboseAction(string playerName)
+        {
+            return $"{playerName} bids {BidAmount} $";
+        }
+
+        public override void Enrich(DecisionContext decisionContext)
+        {
+            decisionContext.CurrentHighBid = BidAmount;
+        }
+    }
+
+    public record PassAction(ActionType Type)
+        : CandidateAction(Type)
+    {
+        public override string GetVerboseAction(string playerName)
+        {
+            return $"{playerName} passes";
+        }
+
+        public override void Enrich(DecisionContext decisionContext)
+        {
+        }
+    }
+
+    public record SelectFieldAction(ActionType Type, int RowIndex = -1, int ColumnIndex = -1)
+        : CandidateAction(Type)
+    {
+        public override string GetVerboseAction(string playerName)
+        {
+            if (Type == ActionType.DevelopHex)
+                return $"{playerName} develops field hex-{RowIndex}-{ColumnIndex}";
+            else
+                return $"{playerName} constructs field hex-{RowIndex}-{ColumnIndex}";
+        }
+
+        public override void Enrich(DecisionContext decisionContext)
+        {
+        }
+    }
 
     public sealed class DecisionContext
     {
