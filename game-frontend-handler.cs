@@ -334,5 +334,17 @@ namespace chicago_express_bot
 
             return isVisible;
         }
+
+        public async Task Click(string selectorOrLocator)
+        {
+            var locator = uiFrame.Locator(selectorOrLocator);
+            await locator.ClickAsync();
+        }
+
+        public async Task Fill(string selectorOrLocator, string value)
+        {
+            var locator = uiFrame.Locator(selectorOrLocator);
+            await locator.FillAsync(value);
+        }
     }
 }

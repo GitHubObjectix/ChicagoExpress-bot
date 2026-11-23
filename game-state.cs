@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SkiaSharp;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -90,6 +91,7 @@ namespace chicago_express_bot
     {
         public abstract string GetVerboseAction(string playerName);
         public abstract void Enrich(DecisionContext decisionContext);
+        public abstract Task Execute(GameFrontendHandler frontendHandler); 
     }
 
     public record SelectGaugeAction(ActionType Type, int GaugeIndex = -1)
@@ -104,6 +106,25 @@ namespace chicago_express_bot
         {
             decisionContext.SelectedGauge = GaugeIndex;
         }
+
+        public override async Task Execute(GameFrontendHandler frontendHandler)
+        {
+            string selectorOrLocator = string.Empty;
+
+            switch (GaugeIndex)
+            {
+                case 0:
+                    selectorOrLocator = "div[id='auction-gauge']"; break;
+                case 1:
+                    selectorOrLocator = "div[id='development-gauge']"; break;
+                case 2:
+                    selectorOrLocator = "div[id='route-construction-gauge']"; break;
+                default:
+                    throw new NotSupportedException("unexpected action gauge");
+            }
+
+            await frontendHandler.Click(selectorOrLocator);
+        }
     }
 
     public record SkipAction(ActionType Type)
@@ -116,6 +137,11 @@ namespace chicago_express_bot
 
         public override void Enrich(DecisionContext decisionContext)
         {
+        }
+
+        public override async Task Execute(GameFrontendHandler frontendHandler)
+        {
+            await frontendHandler.Click("form#skip button[type='submit']");
         }
     }
 
@@ -134,6 +160,13 @@ namespace chicago_express_bot
         {
             decisionContext.SelectedCompany = CompanyIndex;
         }
+
+        public override async Task Execute(GameFrontendHandler frontendHandler)
+        {
+            string selectorOrLocator = string.Empty;
+
+            await frontendHandler.Click($"div[id='{ChicagoExpressSetup.RailwayCompanies[CompanyIndex].Id}']");
+        }
     }
 
     public record BidAction(ActionType Type, int BidAmount)
@@ -148,6 +181,12 @@ namespace chicago_express_bot
         {
             decisionContext.CurrentHighBid = BidAmount;
         }
+
+        public override async Task Execute(GameFrontendHandler frontendHandler)
+        {
+            await frontendHandler.Fill("div[class='selection amount'] input[name='amount']", BidAmount.ToString());
+            await frontendHandler.Click("div[class='selection amount'] button[name='submit']");
+        }
     }
 
     public record PassAction(ActionType Type)
@@ -160,6 +199,11 @@ namespace chicago_express_bot
 
         public override void Enrich(DecisionContext decisionContext)
         {
+        }
+
+        public override async Task Execute(GameFrontendHandler frontendHandler)
+        {
+            await frontendHandler.Click("form#pass button[type='submit']");
         }
     }
 
@@ -176,6 +220,11 @@ namespace chicago_express_bot
 
         public override void Enrich(DecisionContext decisionContext)
         {
+        }
+
+        public override async Task Execute(GameFrontendHandler frontendHandler)
+        {
+            await frontendHandler.Click($"div[id='hex-{RowIndex}-{ColumnIndex}']");
         }
     }
 

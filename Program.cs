@@ -287,10 +287,14 @@ try
                                 int bestActionIndex = ActionSelector.ChooseBestAction(policyNetwork!, stateFeatures, nextActionsFeatures);
                                 nextAction = nextActions[bestActionIndex];
 
-                                // TODO! Implement automated action execution here!
                                 // atm the bot prints the action description on console and waits for execution 
                                 Console.Write(nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
-                                Console.ReadLine();
+                                //Console.ReadLine();
+                                await Task.Delay(1000);
+
+                                // TODO! Implement automated action execution here!
+                                await nextAction.Execute(gameFrontendHandler);
+                                await Task.Delay(3000);
 
                                 // save game state and decision context
                                 pendingTransition = new PendingReplayTransition(State: gameState, StateFeatures: stateFeatures, ChosenActionFeatures: nextActionsFeatures[bestActionIndex]);
