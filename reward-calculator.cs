@@ -13,14 +13,34 @@ namespace chicago_express_bot
             this.rewardScale = rewardScale;
         }
 
-        public float CalculateReward(GameState previous, GameState next)
+        public float CalculateReward(GameState previous, GameState next, int rewardedPlayerIndex)
         {
-            return (EstimatePlayerValue(next) - EstimatePlayerValue(previous)) / rewardScale;
+            float reward = 0.0f;
+            float opponentRewards = 0.0f;
+
+            reward = EstimatePlayerValue(next, rewardedPlayerIndex) - EstimatePlayerValue(previous, rewardedPlayerIndex);
+
+
+            int playerCount = Math.Min(previous.Players.Count, next.Players.Count);
+            for (int i = 0; i < playerCount; ++i)
+            {
+                if (i == rewardedPlayerIndex)
+                    continue;
+
+                opponentRewards += EstimatePlayerValue(next, i) - EstimatePlayerValue(previous, i);
+            }
+
+            opponentRewards /= playerCount - 1;
+            reward -= 0.5f * opponentRewards;
+
+            return reward / rewardScale;
         }
 
-        private float EstimatePlayerValue(GameState gameState)
+
+
+        private float EstimatePlayerValue(GameState gameState, int playerIndex)
         {
-            float playerValue = gameState.CurrentPlayerCash;
+            float playerValue = gameState.Players[playerIndex].PlayerCash;
 
             foreach (var (company, c) in ChicagoExpressSetup.RailwayCompanies.Select(
                     (company, index) => (company, index)))
@@ -28,7 +48,7 @@ namespace chicago_express_bot
                 if (company.Stocks - gameState.Companies[c].SharesAvailable > 0)
                 {
                     int incomePerShare = (int)Math.Ceiling((double)gameState.Companies[c].Income / (double)(company.Stocks - gameState.Companies[c].SharesAvailable));
-                    playerValue += gameState.Players[gameState.CurrentPlayer].Shares[c] * incomePerShare;
+                    playerValue += gameState.Players[playerIndex].Shares[c] * incomePerShare;
                 }
             }
 

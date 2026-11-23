@@ -100,6 +100,31 @@ void StoreNetworks()
     optimizer!.save_state_dict(optimizerPath);
 }
 
+static float CalculateReward(RewardCalculator rewardCalculator, GameState previous, GameState next, int playerIndex)
+{
+    int playerCount = Math.Min(previous.Players.Count, next.Players.Count);
+    for (int i = 0; i < playerCount; ++i)
+    {
+        Console.WriteLine($"Player {i} cash: {previous.Players[i].PlayerCash}$ {next.Players[i].PlayerCash}$");
+
+        Console.Write("[");
+        for (int j = 0; j < previous.Players[i].Shares.Length; ++j)
+            Console.Write($"{previous.Players[i].Shares[j]} ");
+        Console.WriteLine("]");
+
+        Console.Write("[");
+        for (int j = 0; j < next.Players[i].Shares.Length; ++j)
+            Console.Write($"{next.Players[i].Shares[j]} ");
+        Console.WriteLine("]");
+    }
+
+    float reward = rewardCalculator!.CalculateReward(previous, next, playerIndex);
+
+    Console.WriteLine($"Player {playerIndex} reward is {reward}");
+
+    return reward;
+}
+
 
 // main loop to implement Playwright reconnection on connection loss
 try
@@ -250,13 +275,13 @@ try
                                 var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
 
                                 // ...to encode current state and next actions
-                                var stateFeatures = stateEncoder!.Encode(gameState, decisionContextManager.DecisionContext);
+                                var stateFeatures = stateEncoder!.Encode(gameState, decisionContextManager.DecisionContext, playerIndex);
                                 var nextActionsFeatures = nextActions.Select(action => ActionEncoder.Encode(action)).ToList();
 
                                 if (pendingTransition != null)
                                 {
                                     // if there is a pending action from previous move to finalize, store it in the replay buffer
-                                    float reward = rewardCalculator!.CalculateReward(pendingTransition.State, gameState);
+                                    float reward = CalculateReward(rewardCalculator!, pendingTransition.State, gameState, playerIndex);
 
                                     var transition = new ReplayTransition(
                                         StateFeatures: pendingTransition.StateFeatures,
@@ -338,25 +363,28 @@ try
                         if (AskYesNo("Has game ended?"))
                             gameEnded = true;
 
-                        if (gameEnded && pendingTransition != null)
+                        if (gameEnded)
                         {
-                            // scrape current game state
-                            var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
+                            if (pendingTransition != null)
+                            {
+                                // scrape current game state
+                                var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
 
-                            // if there is a pending action from previous move to finalize, store it in the replay buffer
-                            float reward = rewardCalculator!.CalculateReward(pendingTransition.State, gameState);
+                                // if there is a pending action from previous move to finalize, store it in the replay buffer
+                                float reward = CalculateReward(rewardCalculator!, pendingTransition.State, gameState, playerIndex);
 
-                            var transition = new ReplayTransition(
-                                StateFeatures: pendingTransition.StateFeatures,
-                                ChosenActionFeatures: pendingTransition.ChosenActionFeatures,
-                                Reward: reward,
-                                NextStateFeatures: Array.Empty<float>(),
-                                NextLegalActionsFeatures: Array.Empty<float[]>(),
-                                IsTerminal: true);
-                            replayBuffer!.Add(transition);
+                                var transition = new ReplayTransition(
+                                    StateFeatures: pendingTransition.StateFeatures,
+                                    ChosenActionFeatures: pendingTransition.ChosenActionFeatures,
+                                    Reward: reward,
+                                    NextStateFeatures: Array.Empty<float>(),
+                                    NextLegalActionsFeatures: Array.Empty<float[]>(),
+                                    IsTerminal: true);
+                                replayBuffer!.Add(transition);
+                            }
 
                             // train the network again
-                            ReplayTransition[] batch = replayBuffer.Sample(replayBuffer.Count);
+                            ReplayTransition[] batch = replayBuffer!.Sample(replayBuffer.Count);
                             DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
                             // and update the target network
                             targetNetwork!.load_state_dict(policyNetwork!.state_dict());

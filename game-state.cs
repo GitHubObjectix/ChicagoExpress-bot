@@ -25,9 +25,6 @@ namespace chicago_express_bot
 
     public sealed class GameState
     {
-        public int CurrentPlayer { get; set; }
-        public int CurrentPlayerCash { get; set; }
-
         public List<PlayerState> Players { get; set; } = new();
         public List<CompanyState> Companies { get; set; } = new();
         public List<BoardField> Board { get; set; } = new();
@@ -35,6 +32,9 @@ namespace chicago_express_bot
 
     public sealed class PlayerState
     {
+        // cash money of the player
+        public int PlayerCash { get; set; }
+
         // Shares held in company-index order.
         public int[] Shares { get; set; } = Array.Empty<int>();
     }
@@ -184,8 +184,8 @@ namespace chicago_express_bot
 
         public override async Task Execute(GameFrontendHandler frontendHandler)
         {
-            await frontendHandler.Fill("div[class='selection amount'] input[name='amount']", BidAmount.ToString());
-            await frontendHandler.Click("div[class='selection amount'] button[name='submit']");
+            await frontendHandler.Fill("form#bid input[name='amount']", BidAmount.ToString());
+            await frontendHandler.Click("form#bid button[name='submit']");
         }
     }
 

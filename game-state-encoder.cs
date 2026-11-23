@@ -28,11 +28,14 @@ namespace chicago_express_bot
     public static class PlayerStateEncoder
     {
         public static int FeatureCount =>
-            1 * ChicagoExpressSetup.RailwayCompanies.Length;
+            1 // player cash
+            + 1 * ChicagoExpressSetup.RailwayCompanies.Length;
 
         public static float[] Encode(PlayerState playerState)
         {
             var features = new List<float>(FeatureCount);
+
+            features.Add(EncodeHelper.Normalize(playerState.PlayerCash, ChicagoExpressSetup.Cash));
 
             for (int i = 0; i < playerState.Shares.Count(); ++i)
                 features.Add(EncodeHelper.Normalize(playerState.Shares[i], ChicagoExpressSetup.RailwayCompanies[i].Stocks));
@@ -132,27 +135,23 @@ namespace chicago_express_bot
         }
 
         public int FeatureCount =>
-            1 // cash of bot player
-            + _playerCount * PlayerStateEncoder.FeatureCount
+            _playerCount * PlayerStateEncoder.FeatureCount
             + ChicagoExpressSetup.RailwayCompanies.Length * CompanyStateEncoder.FeatureCount
             //+ _gaugeSize
             + ChicagoExpressSetup.FieldCount() * BoardFieldEncoder.FeatureCount;
 
 
-        public float[] Encode(GameState state)
+        public float[] Encode(GameState state, int currentPlayer)
         {
             Validate(state);
 
             var features = new List<float>(FeatureCount);
 
-            // 0. Bot player cash
-            features.Add(EncodeHelper.Normalize(state.CurrentPlayerCash, ChicagoExpressSetup.Cash));
-
-            // 1. Shares: acting player first, then other players.
+            // 1. Player features: acting player first, then other players.
             for (int offset = 0; offset < _playerCount; offset++)
             {
                 int playerIndex =
-                    (state.CurrentPlayer + offset) % _playerCount;
+                    (currentPlayer + offset) % _playerCount;
 
                 features.AddRange(PlayerStateEncoder.Encode(state.Players[playerIndex]));
             }
@@ -189,10 +188,6 @@ namespace chicago_express_bot
 
             if (state.Board.Count != ChicagoExpressSetup.FieldCount())
                 throw new ArgumentException("Unexpected field count.");
-
-            if (state.CurrentPlayer < 0 ||
-                state.CurrentPlayer >= _playerCount)
-                throw new ArgumentException("Invalid current player.");
 
             // TODO! consider to encode gauge positions
             //if (state.ActionGauge.Length != _gaugeSize)
@@ -292,11 +287,11 @@ namespace chicago_express_bot
             gameStateEncoder_ = new GameStateEncoder(playerCount);
         }
 
-        public float[] Encode(GameState gameState, DecisionContext decisionContext)
+        public float[] Encode(GameState gameState, DecisionContext decisionContext, int currentPlayer)
         {
             var features = new List<float>(FeatureCount);
 
-            features.AddRange(gameStateEncoder_.Encode(gameState));
+            features.AddRange(gameStateEncoder_.Encode(gameState, currentPlayer));
             features.AddRange(DecisionContextEncoder.Encode(decisionContext));
 
             if (features.Count != FeatureCount)

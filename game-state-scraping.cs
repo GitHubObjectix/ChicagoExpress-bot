@@ -16,12 +16,15 @@ namespace chicago_express_bot
             var locator = gameFrontendHandler.GetLocator();
 
             // scrape player states
-            gameState.CurrentPlayer = playerIndex;
             gameState.Players = new List<PlayerState>(playerCount);
             for (int n = 0; n < playerCount; ++n)
             {
                 gameState.Players.Add(new PlayerState());
                 gameState.Players[n].Shares = new int[ChicagoExpressSetup.RailwayCompanies.Length];
+
+                // determine the cash money of the player
+                var banknotes = locator.Locator($"div#player-tableau[data-player=\"{n + 1}\"] div#banknote");
+                gameState.Players[n].PlayerCash = await banknotes.CountAsync();
 
                 // determine number of shared held per company
                 foreach (var (company, c) in ChicagoExpressSetup.RailwayCompanies.Select(
@@ -32,13 +35,6 @@ namespace chicago_express_bot
 
                     // Determine how many were found
                     gameState.Players[n].Shares[c] = await stocks.CountAsync();
-                }
-
-                if (n == playerIndex)
-                {
-                    // determine the cash money of the bot player
-                    var banknotes = locator.Locator($"div#player-tableau[data-player=\"{n+1}\"] div#banknote");
-                    gameState.CurrentPlayerCash = await banknotes.CountAsync();
                 }
             }
 

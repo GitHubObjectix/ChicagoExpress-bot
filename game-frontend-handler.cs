@@ -114,7 +114,6 @@ namespace chicago_express_bot
             return playerButton != null;
         }
 
-
         public async Task<bool> ItsMyTurn()
         {
             bool itsMyTurn = false;
