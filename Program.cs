@@ -93,6 +93,14 @@ string targetNetworkPath =
 string optimizerPath =
     Path.Combine(checkpointDirectory, "optimizer.pt");
 
+void StoreNetworks()
+{
+    policyNetwork!.save(policyNetworkPath);
+    targetNetwork!.save(targetNetworkPath);
+    optimizer!.save_state_dict(optimizerPath);
+}
+
+
 // main loop to implement Playwright reconnection on connection loss
 try
 {
@@ -225,7 +233,7 @@ try
                         do
                         {
                             // update decision context...
-                            await decisionContextManager.Update(gameFrontendHandler, nextAction);
+                            await decisionContextManager!.Update(gameFrontendHandler, nextAction);
 
                             // ...and determine next legal actions...
                             var nextActions = await decisionContextManager.GetCandidateActions(gameFrontendHandler);
@@ -274,9 +282,7 @@ try
                                             trainingSteps = 0;
                                         }
 
-                                        policyNetwork!.save(policyNetworkPath);
-                                        targetNetwork!.save(targetNetworkPath);
-                                        optimizer!.save_state_dict(optimizerPath);
+                                        StoreNetworks();
                                     }
 
                                     // and remove pending transition because its final now
@@ -287,12 +293,11 @@ try
                                 int bestActionIndex = ActionSelector.ChooseBestAction(policyNetwork!, stateFeatures, nextActionsFeatures);
                                 nextAction = nextActions[bestActionIndex];
 
-                                // atm the bot prints the action description on console and waits for execution 
-                                Console.Write(nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
-                                //Console.ReadLine();
+                                // print the chosen action of the bot...
+                                Console.WriteLine(nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
                                 await Task.Delay(1000);
 
-                                // TODO! Implement automated action execution here!
+                                // ...and await the execution
                                 await nextAction.Execute(gameFrontendHandler);
                                 await Task.Delay(3000);
 
@@ -318,15 +323,46 @@ try
                     bool isPopupVisible = await gameFrontendHandler.IsPopupVisible(100);
                     if (isPopupVisible)
                     {
-                        Console.Write("There is a pop-up visible");
-                        Console.ReadLine();
+                        if (gameFrontendHandler.IsLocalGame() && playerIndex == 0 || !gameFrontendHandler.IsLocalGame())
+                        {
+                            // dismiss the modal pop-up
+                            Console.Write("There is a pop-up visible...");
+                            await gameFrontendHandler.Click("div#announcement.modal-popup");
+                            await Task.Delay(3000);
+                            Console.WriteLine("dismissed it");
+                        }
                     }
                     else
                     {
                         // if player-controls are not visible and also no pop-up then the game ended
                         if (AskYesNo("Has game ended?"))
                             gameEnded = true;
-                        // TODO! determine how to finalize pending transitions
+
+                        if (gameEnded && pendingTransition != null)
+                        {
+                            // scrape current game state
+                            var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
+
+                            // if there is a pending action from previous move to finalize, store it in the replay buffer
+                            float reward = rewardCalculator!.CalculateReward(pendingTransition.State, gameState);
+
+                            var transition = new ReplayTransition(
+                                StateFeatures: pendingTransition.StateFeatures,
+                                ChosenActionFeatures: pendingTransition.ChosenActionFeatures,
+                                Reward: reward,
+                                NextStateFeatures: Array.Empty<float>(),
+                                NextLegalActionsFeatures: Array.Empty<float[]>(),
+                                IsTerminal: true);
+                            replayBuffer!.Add(transition);
+
+                            // train the network again
+                            ReplayTransition[] batch = replayBuffer.Sample(replayBuffer.Count);
+                            DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
+                            // and update the target network
+                            targetNetwork!.load_state_dict(policyNetwork!.state_dict());
+
+                            StoreNetworks();
+                        }
                     }
                 }
 

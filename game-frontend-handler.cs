@@ -109,13 +109,18 @@ namespace chicago_express_bot
             return await uiFrame.Locator("div[class='player-controls *']").CountAsync() > 0;
         }
 
+        public bool IsLocalGame()
+        {
+            return playerButton != null;
+        }
+
+
         public async Task<bool> ItsMyTurn()
         {
             bool itsMyTurn = false;
 
-            if (playerButton != null)
+            if (IsLocalGame())
             {
-                // local game
                 string? style = await playerButton!.GetAttributeAsync("style");
                 itsMyTurn = style?.Contains("2px solid black") == true;
             }
