@@ -241,7 +241,7 @@ try
 
             firstConnection = false;
 
-            // main game loop (TODO! game terminal condition not implemented yet)
+            // main game loop
             while (browser.IsConnected && !gamePage.IsClosed && !gameEnded)
             {
                 try
@@ -294,7 +294,6 @@ try
 
                                     Console.WriteLine($"Put transition into buffer. Buffer size is {replayBuffer.Count}");
 
-                                    // TODO! determine a more reasonable count value
                                     if (replayBuffer.Count >= 50)
                                     {
                                         ReplayTransition[] batch = replayBuffer.Sample(32);

@@ -20,11 +20,6 @@ namespace chicago_express_bot
         }
     }
 
-    // TODO! to encode:
-    // 1. Game state
-    // 2. Decision context (which step of multiple-step turn you are in and what has already been selected)
-    // 3. Candidate action
-
     public static class PlayerStateEncoder
     {
         public static int FeatureCount =>
