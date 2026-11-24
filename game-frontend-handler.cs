@@ -37,6 +37,7 @@ namespace chicago_express_bot
                 string? playerName = await playerButton.TextContentAsync();
 
                 gameFrontendHandler.playerButton = playerButton;
+                gameFrontendHandler.selectedPlayer = selectedPlayer;
                 gameFrontendHandler.numPlayers = numPlayers;
                 gameFrontendHandler.playerName = playerName == null ? string.Empty : playerName!;
                 gameFrontendHandler.neededDecision = null;
@@ -56,6 +57,7 @@ namespace chicago_express_bot
         // the button of the player to play for in a local game
         internal ILocator? playerButton = null;
 
+        internal int selectedPlayer = 0;
         internal int numPlayers = 0;
         internal string playerName = string.Empty;
 
@@ -92,6 +94,11 @@ namespace chicago_express_bot
         public bool ReadyToPlay()
         {
             return playerButton != null;
+        }
+
+        public int GetSelectedPlayer()
+        {
+            return selectedPlayer;
         }
 
         public int GetNumPlayers()

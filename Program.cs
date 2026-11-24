@@ -9,7 +9,6 @@ using var playwright = await Playwright.CreateAsync();
 
 // game related variables
 int tabIndex = 0;
-int playerIndex = 0;
 bool firstConnection = true;
 bool shutdownRequested = false;
 bool gameEnded = false;
@@ -263,25 +262,25 @@ try
                             // ...and determine next legal actions...
                             var nextActions = await decisionContextManager.GetCandidateActions(gameFrontendHandler);
 
-                            Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} can choose from:");
-                            foreach (var n in nextActions)
-                                Console.WriteLine(n.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
-                            Console.WriteLine("end choice");
-
                             if (nextActions.Count > 0)
                             {
+                                Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} can choose from:");
+                                foreach (var n in nextActions)
+                                    Console.WriteLine(n.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
+                                Console.WriteLine("end choice");
+
                                 // if there are legal actions
                                 // scrape current game state...
-                                var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
+                                var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), gameFrontendHandler.GetSelectedPlayer());
 
                                 // ...to encode current state and next actions
-                                var stateFeatures = stateEncoder!.Encode(gameState, decisionContextManager.DecisionContext, playerIndex);
+                                var stateFeatures = stateEncoder!.Encode(gameState, decisionContextManager.DecisionContext, gameFrontendHandler.GetSelectedPlayer());
                                 var nextActionsFeatures = nextActions.Select(action => ActionEncoder.Encode(action)).ToList();
 
                                 if (pendingTransition != null)
                                 {
                                     // if there is a pending action from previous move to finalize, store it in the replay buffer
-                                    float reward = CalculateReward(rewardCalculator!, pendingTransition.State, gameState, playerIndex);
+                                    float reward = CalculateReward(rewardCalculator!, pendingTransition.State, gameState, gameFrontendHandler.GetSelectedPlayer());
 
                                     var transition = new ReplayTransition(
                                         StateFeatures: pendingTransition.StateFeatures,
@@ -318,7 +317,7 @@ try
                                 nextAction = nextActions[bestActionIndex];
 
                                 // print the chosen action of the bot...
-                                Console.WriteLine(nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName()));
+                                Console.WriteLine($"Selected action: {nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName())}");
                                 await Task.Delay(1000);
 
                                 // ...and await the execution
@@ -330,6 +329,8 @@ try
                             }
                             else
                             {
+                                Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} has finished the turn");
+
                                 decisionContextManager = null;
                                 nextAction = null;
                             }
@@ -347,14 +348,15 @@ try
                     bool isPopupVisible = await gameFrontendHandler.IsPopupVisible(100);
                     if (isPopupVisible)
                     {
-                        if (gameFrontendHandler.IsLocalGame() && playerIndex == 0 || !gameFrontendHandler.IsLocalGame())
+                        Console.Write("There is a pop-up visible...");
+                        if (gameFrontendHandler.IsLocalGame() && gameFrontendHandler.GetSelectedPlayer() == 0 || !gameFrontendHandler.IsLocalGame())
                         {
                             // dismiss the modal pop-up
-                            Console.Write("There is a pop-up visible...");
                             await gameFrontendHandler.Click("div#announcement.modal-popup");
                             await Task.Delay(3000);
-                            Console.WriteLine("dismissed it");
+                            Console.Write("dismissed it");
                         }
+                        Console.WriteLine();
                     }
                     else
                     {
@@ -367,10 +369,10 @@ try
                             if (pendingTransition != null)
                             {
                                 // scrape current game state
-                                var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), playerIndex);
+                                var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), gameFrontendHandler.GetSelectedPlayer());
 
                                 // if there is a pending action from previous move to finalize, store it in the replay buffer
-                                float reward = CalculateReward(rewardCalculator!, pendingTransition.State, gameState, playerIndex);
+                                float reward = CalculateReward(rewardCalculator!, pendingTransition.State, gameState, gameFrontendHandler.GetSelectedPlayer());
 
                                 var transition = new ReplayTransition(
                                     StateFeatures: pendingTransition.StateFeatures,
