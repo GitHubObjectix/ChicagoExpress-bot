@@ -23,16 +23,10 @@ Console.CancelKeyPress += (_, eventArgs) =>
 // bot related variables
 DecisionContextManager? decisionContextManager = null;
 StateEncoder? stateEncoder = null;
-ActionQNetwork? policyNetwork = null;
-ActionQNetwork? targetNetwork = null;
-TorchSharp.Modules.Adam? optimizer = null;
 RewardCalculator? rewardCalculator = null;
-int trainingSteps = 0;
-
+NeuralNetworkManager? neuralNetworkManager = null;
 PendingReplayTransition? pendingTransition = null;
-ReplayBuffer? replayBuffer = null;
 
-var device = torch.CPU;
 
 static bool AskYesNo(string question)
 {
@@ -85,20 +79,6 @@ string checkpointDirectory = Path.GetFullPath(
         : storagePath);
 Directory.CreateDirectory(checkpointDirectory);
 
-string policyNetworkPath =
-    Path.Combine(checkpointDirectory, "policy-network.pt");
-string targetNetworkPath =
-    Path.Combine(checkpointDirectory, "target-network.pt");
-string optimizerPath =
-    Path.Combine(checkpointDirectory, "optimizer.pt");
-
-void StoreNetworks()
-{
-    policyNetwork!.save(policyNetworkPath);
-    targetNetwork!.save(targetNetworkPath);
-    optimizer!.save_state_dict(optimizerPath);
-}
-
 static float CalculateReward(RewardCalculator rewardCalculator, GameState previous, GameState next, int playerIndex)
 {
     int playerCount = Math.Min(previous.Players.Count, next.Players.Count);
@@ -146,8 +126,6 @@ try
 
             if (firstConnection)
             {
-                Console.WriteLine($"Connected: {browser.IsConnected}");
-
                 foreach (var (page, index) in pages.Select((p, i) => (p, i)))
                 {
                     Console.WriteLine(
@@ -197,44 +175,23 @@ try
                 // initialize neural network related variables
                 stateEncoder = new StateEncoder(gameFrontendHandler.GetNumPlayers());
 
-                policyNetwork = new ActionQNetwork(
-                    stateFeatureCount: stateEncoder.FeatureCount,
-                    actionFeatureCount: ActionEncoder.FeatureCount,
-                    hiddenSize: 128
-                ).to(device);
-
-                if (File.Exists(policyNetworkPath))
+                neuralNetworkManager = new NeuralNetworkManager(checkpointDirectory, stateEncoder.FeatureCount, ActionEncoder.FeatureCount);
+                if (neuralNetworkManager.LoadPolicyNetwork())
                 {
-                    policyNetwork.load(policyNetworkPath);
-                    Console.WriteLine($"policy-network loaded: {policyNetworkPath}");
+                    Console.WriteLine($"policy-network loaded: {neuralNetworkManager.PolicyNetworkPath}");
                 }
 
-                targetNetwork = new ActionQNetwork(
-                    stateFeatureCount: stateEncoder.FeatureCount,
-                    actionFeatureCount: ActionEncoder.FeatureCount,
-                    hiddenSize: 128
-                ).to(device);
-
-                if (File.Exists(targetNetworkPath))
+                if (neuralNetworkManager.LoadTargetNetwork())
                 {
-                    targetNetwork.load(targetNetworkPath);
-                    Console.WriteLine($"target-network loaded: {targetNetworkPath}");
-                }
-                else
-                {
-                    targetNetwork.load_state_dict(policyNetwork.state_dict());
+                    Console.WriteLine($"target-network loaded: {neuralNetworkManager.TargetNetworkPath}");
                 }
 
-                // Adam will update the network weights during training.
-                optimizer = torch.optim.Adam(policyNetwork.parameters(), lr: 0.0001);
-                if (File.Exists(optimizerPath))
+                if (neuralNetworkManager.LoadOptimizer())
                 {
-                    optimizer.load_state_dict(optimizerPath);
-                    Console.WriteLine($"optimizer loaded: {optimizerPath}");
+                    Console.WriteLine($"optimizer loaded: {neuralNetworkManager.OptimizerPath}");
                 }
 
                 rewardCalculator = new RewardCalculator();
-                replayBuffer = new ReplayBuffer(5000);
                 // end neural network initialization
             }
 
@@ -245,7 +202,6 @@ try
             {
                 try
                 {
-
                     if (await gameFrontendHandler.ItsMyTurn())
                     {
                         Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} is at turn");
@@ -279,7 +235,7 @@ try
 
                                 if (pendingTransition != null)
                                 {
-                                    // if there is a pending action from previous move to finalize, store it in the replay buffer
+                                    // if there is a pending action from previous move to finalize, finalize it
                                     float reward = CalculateReward(rewardCalculator!, pendingTransition.State, gameState, gameFrontendHandler.GetSelectedPlayer());
 
                                     var transition = new ReplayTransition(
@@ -289,31 +245,20 @@ try
                                         NextStateFeatures: stateFeatures,
                                         NextLegalActionsFeatures: nextActionsFeatures,
                                         IsTerminal: false);
-                                    replayBuffer!.Add(transition);
 
-                                    Console.WriteLine($"Put transition into buffer. Buffer size is {replayBuffer.Count}");
+                                    // store it in the replay buffer
+                                    neuralNetworkManager!.AddTransitionToReplayBuffer(transition);
+                                    Console.WriteLine($"Put transition into buffer. Buffer size is {neuralNetworkManager!.GetReplayBufferCount}");
 
-                                    if (replayBuffer.Count >= 50)
-                                    {
-                                        ReplayTransition[] batch = replayBuffer.Sample(32);
-
-                                        DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
-
-                                        if (++trainingSteps >= 50)
-                                        {
-                                            targetNetwork!.load_state_dict(policyNetwork!.state_dict());
-                                            trainingSteps = 0;
-                                        }
-
-                                        StoreNetworks();
-                                    }
+                                    // update the networks which might trigger a taining step
+                                    neuralNetworkManager.UpdateNetworks();
 
                                     // and remove pending transition because its final now
                                     pendingTransition = null;
                                 }
 
                                 // ...and let action selector determine the best action
-                                int bestActionIndex = ActionSelector.ChooseBestAction(policyNetwork!, stateFeatures, nextActionsFeatures);
+                                int bestActionIndex = neuralNetworkManager!.ChooseBestAction(stateFeatures, nextActionsFeatures);
                                 nextAction = nextActions[bestActionIndex];
 
                                 // print the chosen action of the bot...
@@ -381,16 +326,11 @@ try
                                     NextStateFeatures: Array.Empty<float>(),
                                     NextLegalActionsFeatures: Array.Empty<float[]>(),
                                     IsTerminal: true);
-                                replayBuffer!.Add(transition);
+                                neuralNetworkManager!.AddTransitionToReplayBuffer(transition);
                             }
 
-                            // train the network again
-                            ReplayTransition[] batch = replayBuffer!.Sample(replayBuffer.Count);
-                            DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
-                            // and update the target network
-                            targetNetwork!.load_state_dict(policyNetwork!.state_dict());
-
-                            StoreNetworks();
+                            // finally update the networks
+                            neuralNetworkManager!.UpdateNetworks(true);
                         }
                     }
                 }
@@ -416,7 +356,5 @@ try
 }
 finally
 {
-    optimizer?.Dispose();
-    targetNetwork?.Dispose();
-    policyNetwork?.Dispose();
+    neuralNetworkManager!.Dispose();
 }
