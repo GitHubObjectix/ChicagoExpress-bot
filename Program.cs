@@ -11,6 +11,7 @@ using var playwright = await Playwright.CreateAsync();
 int tabIndex = 0;
 bool firstConnection = true;
 bool shutdownRequested = false;
+int gameEndGuesses = 0;
 bool gameEnded = false;
 
 Console.CancelKeyPress += (_, eventArgs) =>
@@ -108,7 +109,7 @@ static float CalculateReward(RewardCalculator rewardCalculator, GameState previo
 // main loop to implement Playwright reconnection on connection loss
 try
 {
-    while (!shutdownRequested)
+    while (!shutdownRequested && !gameEnded)
     {
         try
         {
@@ -248,7 +249,7 @@ try
 
                                     // store it in the replay buffer
                                     neuralNetworkManager!.AddTransitionToReplayBuffer(transition);
-                                    Console.WriteLine($"Put transition into buffer. Buffer size is {neuralNetworkManager!.GetReplayBufferCount}");
+                                    Console.WriteLine($"Put transition into buffer. Buffer size is {neuralNetworkManager!.GetReplayBufferCount()}");
 
                                     // update the networks which might trigger a taining step
                                     neuralNetworkManager.UpdateNetworks();
@@ -306,8 +307,12 @@ try
                     else
                     {
                         // if player-controls are not visible and also no pop-up then the game ended
-                        if (AskYesNo("Has game ended?"))
+                        if (++gameEndGuesses >= 5)
+                        //if (AskYesNo("Has game ended?"))
+                        {
+                            Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} assumes that game has ended");
                             gameEnded = true;
+                        }
 
                         if (gameEnded)
                         {
@@ -350,7 +355,7 @@ try
             Console.WriteLine($"Exception occurred: {ex.Message}");
         }
 
-        if (!shutdownRequested)
+        if (!shutdownRequested && !gameEnded)
             await Task.Delay(1000);
     }
 }
