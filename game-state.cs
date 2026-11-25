@@ -120,19 +120,10 @@ namespace chicago_express_bot
 
         public override async Task Execute(GameFrontendHandler frontendHandler)
         {
-            string selectorOrLocator = string.Empty;
+            if (GaugeIndex < 0 || GaugeIndex >= ChicagoExpressSetup.Gauges)
+                throw new NotSupportedException("unexpected action gauge");
 
-            switch (GaugeIndex)
-            {
-                case 0:
-                    selectorOrLocator = "div[id='auction-gauge']"; break;
-                case 1:
-                    selectorOrLocator = "div[id='development-gauge']"; break;
-                case 2:
-                    selectorOrLocator = "div[id='route-construction-gauge']"; break;
-                default:
-                    throw new NotSupportedException("unexpected action gauge");
-            }
+            string selectorOrLocator = $"div[id='{ChicagoExpressSetup.GaugeNames[GaugeIndex]}-gauge']";
 
             await frontendHandler.Click(selectorOrLocator);
         }

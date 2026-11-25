@@ -13,27 +13,72 @@ namespace chicago_express_bot
             this.rewardScale = rewardScale;
         }
 
-        public float CalculateReward(GameState previous, GameState next, int rewardedPlayerIndex)
+        /**
+         * @isTerminal: true if game is finished after the move
+         */
+        public float CalculateReward(GameState previousGameState, CandidateAction chosenAction, GameState gameState, bool isTerminal, int rewardedPlayerIndex)
         {
             float reward = 0.0f;
             float opponentRewards = 0.0f;
 
-            reward = EstimatePlayerValue(next, rewardedPlayerIndex) - EstimatePlayerValue(previous, rewardedPlayerIndex);
+            // calculate the main reward by estimate player value change 
 
+            reward = EstimatePlayerValue(gameState, rewardedPlayerIndex) - EstimatePlayerValue(previousGameState, rewardedPlayerIndex);
 
-            int playerCount = Math.Min(previous.Players.Count, next.Players.Count);
+            // calculate average opponent player value change and reduce main reward
+
+            int playerCount = Math.Min(previousGameState.Players.Count, gameState.Players.Count);
             for (int i = 0; i < playerCount; ++i)
             {
                 if (i == rewardedPlayerIndex)
                     continue;
 
-                opponentRewards += EstimatePlayerValue(next, i) - EstimatePlayerValue(previous, i);
+                opponentRewards += EstimatePlayerValue(gameState, i) - EstimatePlayerValue(previousGameState, i);
             }
 
             opponentRewards /= playerCount - 1;
             reward -= 0.5f * opponentRewards;
 
             // TODO! add a reward bonus for an auction when share was bought at reasonable price
+
+            switch (chosenAction.Type)
+            {
+                case ActionType.SelectGauge:
+                    break;
+                case ActionType.Skip:
+                    break;
+                case ActionType.SelectAuctionCompany:
+                    break;
+                case ActionType.Bid:
+                    // reward bonus if share was bought at reasonable price
+                    break;
+                case ActionType.Pass:
+                    break;
+                case ActionType.DevelopHex:
+                    break;
+                case ActionType.SelectConstructionCompany:
+                    break;
+                case ActionType.ConstructHex:
+                    break;
+            }
+
+            // if game ended after chosen action calculate a reward bonus/malus
+            if (isTerminal)
+            {
+                var winningPlayerIndexes = gameState.Players
+                        .Select((p, i) => new { Player = p, Index = i })
+                        .Where(x => x.Player.PlayerCash == gameState.Players.Max(p => p.PlayerCash))
+                        .Select(x => x.Index).ToList();
+
+                if (winningPlayerIndexes.Contains(rewardedPlayerIndex))
+                {
+                    reward += winningPlayerIndexes.Count > 1 ? 0.5f : 1.0f;
+                }
+                else
+                {
+                    reward += -1.0f;
+                }
+            }
 
             return reward / rewardScale;
         }

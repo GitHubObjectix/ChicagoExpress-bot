@@ -70,16 +70,7 @@ namespace chicago_express_bot
 
             for (int i = 0; i < ChicagoExpressSetup.Gauges; ++i)
             {
-                string gaugeName = string.Empty;
-                switch (i)
-                {
-                    case 0:
-                        gaugeName = "auction"; break;
-                    case 1:
-                        gaugeName = "development"; break;
-                    case 2:
-                        gaugeName = "route-construction"; break;
-                }
+                string gaugeName = ChicagoExpressSetup.GaugeNames[i];
 
                 var gauge = locator.Locator($"div#{gaugeName}-gauge");
                 string? titleAttribute = await gauge.GetAttributeAsync("title");

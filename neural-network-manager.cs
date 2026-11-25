@@ -23,6 +23,9 @@ namespace chicago_express_bot
         ReplayBuffer replayBuffer;
         int trainingSteps = 0;
 
+        // the epsilon of greedy approach to select best actions
+        float epsilon = 1.0f;
+
         public NeuralNetworkManager(string storageDirectory, int stateFeatureCount, int actionFeatureCount)
         {
             this.storageDirectory = storageDirectory;
@@ -122,7 +125,11 @@ namespace chicago_express_bot
 
         public int ChooseBestAction(float[] stateFeatures, IReadOnlyList<float[]> candidateActions)
         {
-            return ActionSelector.ChooseBestAction(policyNetwork, stateFeatures, candidateActions);
+            return ActionSelector.ChooseBestAction(
+                policyNetwork,
+                stateFeatures,
+                candidateActions,
+                epsilon);
         }
         public void Dispose()
         {

@@ -10,7 +10,8 @@ namespace chicago_express_bot
         public static int ChooseBestAction(
             ActionQNetwork network,
             float[] stateFeatures,
-            IReadOnlyList<float[]> candidateActions)
+            IReadOnlyList<float[]> candidateActions,
+            float epsilon)
         {
             if (candidateActions.Count == 0)
                 throw new ArgumentException("No legal actions.");
@@ -18,40 +19,52 @@ namespace chicago_express_bot
             if (stateFeatures.Length != network.StateFeatureCount)
                 throw new ArgumentException("Incorrect state feature count.");
 
-            network.eval();
+            if (epsilon is < 0.0f or > 1.0f)
+                throw new ArgumentOutOfRangeException(nameof(epsilon),
+                    "Epsilon must be between 0 and 1.");
 
             int bestIndex = -1;
-            float bestQ = float.NegativeInfinity;
 
-            using var noGrad = torch.no_grad();
-
-            for (int i = 0; i < candidateActions.Count; i++)
+            if (Random.Shared.NextSingle() < epsilon)
             {
-                float[] actionFeatures = candidateActions[i];
+                bestIndex = Random.Shared.Next(candidateActions.Count);
+            }
+            else
+            {
+                network.eval();
 
-                if (actionFeatures.Length != network.ActionFeatureCount)
-                    throw new ArgumentException(
-                        $"Candidate {i} has the wrong feature count.");
+                float bestQ = float.NegativeInfinity;
 
-                float[] combined = new float[network.InputFeatureCount];
+                using var noGrad = torch.no_grad();
 
-                Array.Copy(stateFeatures, 0, combined, 0,
-                    stateFeatures.Length);
-
-                Array.Copy(actionFeatures, 0, combined,
-                    stateFeatures.Length, actionFeatures.Length);
-
-                using var input = torch.tensor(combined)
-                    .reshape(1, network.InputFeatureCount);
-
-                using var output = network.forward(input);
-
-                float q = output.item<float>();
-
-                if (q > bestQ)
+                for (int i = 0; i < candidateActions.Count; i++)
                 {
-                    bestQ = q;
-                    bestIndex = i;
+                    float[] actionFeatures = candidateActions[i];
+
+                    if (actionFeatures.Length != network.ActionFeatureCount)
+                        throw new ArgumentException(
+                            $"Candidate {i} has the wrong feature count.");
+
+                    float[] combined = new float[network.InputFeatureCount];
+
+                    Array.Copy(stateFeatures, 0, combined, 0,
+                        stateFeatures.Length);
+
+                    Array.Copy(actionFeatures, 0, combined,
+                        stateFeatures.Length, actionFeatures.Length);
+
+                    using var input = torch.tensor(combined)
+                        .reshape(1, network.InputFeatureCount);
+
+                    using var output = network.forward(input);
+
+                    float q = output.item<float>();
+
+                    if (q > bestQ)
+                    {
+                        bestQ = q;
+                        bestIndex = i;
+                    }
                 }
             }
 

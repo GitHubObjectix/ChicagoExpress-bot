@@ -80,25 +80,25 @@ string checkpointDirectory = Path.GetFullPath(
         : storagePath);
 Directory.CreateDirectory(checkpointDirectory);
 
-static float CalculateReward(RewardCalculator rewardCalculator, GameState previous, GameState next, int playerIndex)
+static float CalculateReward(RewardCalculator rewardCalculator, GameState previousGameState, CandidateAction chosenAction, GameState gameState, bool isTerminal, int playerIndex)
 {
-    int playerCount = Math.Min(previous.Players.Count, next.Players.Count);
+    int playerCount = Math.Min(previousGameState.Players.Count, gameState.Players.Count);
     for (int i = 0; i < playerCount; ++i)
     {
-        Console.WriteLine($"Player {i} cash: {previous.Players[i].PlayerCash}$ {next.Players[i].PlayerCash}$");
+        Console.WriteLine($"Player {i} cash: {previousGameState.Players[i].PlayerCash}$ {gameState.Players[i].PlayerCash}$");
 
         Console.Write("[");
-        for (int j = 0; j < previous.Players[i].Shares.Length; ++j)
-            Console.Write($"{previous.Players[i].Shares[j]} ");
+        for (int j = 0; j < previousGameState.Players[i].Shares.Length; ++j)
+            Console.Write($"{previousGameState.Players[i].Shares[j]} ");
         Console.WriteLine("]");
 
         Console.Write("[");
-        for (int j = 0; j < next.Players[i].Shares.Length; ++j)
-            Console.Write($"{next.Players[i].Shares[j]} ");
+        for (int j = 0; j < gameState.Players[i].Shares.Length; ++j)
+            Console.Write($"{gameState.Players[i].Shares[j]} ");
         Console.WriteLine("]");
     }
 
-    float reward = rewardCalculator!.CalculateReward(previous, next, playerIndex);
+    float reward = rewardCalculator!.CalculateReward(previousGameState, chosenAction, gameState, isTerminal, playerIndex);
 
     Console.WriteLine($"Player {playerIndex} reward is {reward}");
 
@@ -237,7 +237,7 @@ try
                                 if (pendingTransition != null)
                                 {
                                     // if there is a pending action from previous move to finalize, finalize it
-                                    float reward = CalculateReward(rewardCalculator!, pendingTransition.State, gameState, gameFrontendHandler.GetSelectedPlayer());
+                                    float reward = CalculateReward(rewardCalculator!, pendingTransition.State, pendingTransition.ChosenAction, gameState, false, gameFrontendHandler.GetSelectedPlayer());
 
                                     var transition = new ReplayTransition(
                                         StateFeatures: pendingTransition.StateFeatures,
@@ -271,7 +271,7 @@ try
                                 await Task.Delay(3000);
 
                                 // save game state and decision context
-                                pendingTransition = new PendingReplayTransition(State: gameState, StateFeatures: stateFeatures, ChosenActionFeatures: nextActionsFeatures[bestActionIndex]);
+                                pendingTransition = new PendingReplayTransition(State: gameState, StateFeatures: stateFeatures, ChosenAction: nextAction, ChosenActionFeatures: nextActionsFeatures[bestActionIndex]);
                             }
                             else
                             {
@@ -328,7 +328,7 @@ try
                                 var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), gameFrontendHandler.GetSelectedPlayer());
 
                                 // if there is a pending action from previous move to finalize, store it in the replay buffer
-                                float reward = CalculateReward(rewardCalculator!, pendingTransition.State, gameState, gameFrontendHandler.GetSelectedPlayer());
+                                float reward = CalculateReward(rewardCalculator!, pendingTransition.State, pendingTransition.ChosenAction, gameState, true, gameFrontendHandler.GetSelectedPlayer());
 
                                 var transition = new ReplayTransition(
                                     StateFeatures: pendingTransition.StateFeatures,

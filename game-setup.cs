@@ -54,6 +54,7 @@ public static class ChicagoExpressSetup
     public const int Gauges = 3;
 
     public static readonly int[] GaugeSizes = [4, 5, 6];
+    public static readonly string[] GaugeNames = ["auction", "development", "route-construction"];
 
     public static readonly (int FirstRow, int LastRow)[] ColumnConfiguration =
     {

@@ -7,6 +7,7 @@ namespace chicago_express_bot
     public sealed record PendingReplayTransition(
         GameState State,
         float[] StateFeatures,
+        CandidateAction ChosenAction,
         float[] ChosenActionFeatures);
 
     public sealed record ReplayTransition(
