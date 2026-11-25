@@ -4,6 +4,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 namespace chicago_express_bot
 {
@@ -62,7 +65,48 @@ namespace chicago_express_bot
             }
 
             // scrape the board state
-            gameState.Board = new List<BoardField>();
+            gameState.Board = new BoardState();
+            gameState.Board.NumberOfRemainingHouses = await locator.Locator("#house-pile div#house").CountAsync();
+
+            for (int i = 0; i < ChicagoExpressSetup.Gauges; ++i)
+            {
+                string gaugeName = string.Empty;
+                switch (i)
+                {
+                    case 0:
+                        gaugeName = "auction"; break;
+                    case 1:
+                        gaugeName = "development"; break;
+                    case 2:
+                        gaugeName = "route-construction"; break;
+                }
+
+                var gauge = locator.Locator($"div#{gaugeName}-gauge");
+                string? titleAttribute = await gauge.GetAttributeAsync("title");
+
+                Match match = Regex.Match(titleAttribute!, @"actionAngles:\s*\[([-\d\s,]+)\]");
+                int[] actionAngles = match.Groups[1].Value.Split(',', StringSplitOptions.TrimEntries).Select(int.Parse).ToArray();
+
+                var pointer = gauge.Locator("img.gauge-pointer");
+                string? style = await pointer.GetAttributeAsync("style");
+                // Extract the rotation degree, e.g. "transform: rotate(180deg)"
+                match = Regex.Match(style!, @"rotate\(\s*(-?\d+(?:\.\d+)?)deg\s*\)");
+                int degree = (int)double.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+
+                gameState.Board.GaugePositions[i] = Array.IndexOf(actionAngles, degree);
+            }
+
+            for (int i = 0; i < ChicagoExpressSetup.IndustrialCityNames.Length; ++i)
+            {
+                var trackField = locator.Locator($"div[id^='{ChicagoExpressSetup.IndustrialCityNames[i]}-']").Filter(new LocatorFilterOptions { Has = locator.Locator("div#house") });
+
+                string? id = await trackField.First.GetAttributeAsync("id");
+                Match? match = Regex.Match(id!, $@"^{ChicagoExpressSetup.IndustrialCityNames[i]}-(\d+)$");
+
+                gameState.Board.IndustrialTrackPositions[i] = int.Parse(match!.Groups[1].Value);
+            }
+
+            gameState.Board.Fields = new List<BoardField>();
             foreach (var (column, c) in ChicagoExpressSetup.ColumnConfiguration.Select(
                 (column, c) => (column, c)))
             {
@@ -156,7 +200,7 @@ namespace chicago_express_bot
                         boardField.IncomeIncrease += ChicagoExpressSetup.GetCostAndIncomeConfiguration(r, c).Income;
                     }
 
-                    gameState.Board.Add(boardField);
+                    gameState.Board.Fields.Add(boardField);
                 }
             }
 

@@ -106,7 +106,7 @@ namespace chicago_express_bot
         {
             if (forced || replayBuffer.Count >= 50)
             {
-                ReplayTransition[] batch = replayBuffer.Sample(32);
+                ReplayTransition[] batch = replayBuffer.Sample(forced ? replayBuffer.Count : 32);
 
                 DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
 

@@ -308,10 +308,16 @@ try
                     {
                         // if player-controls are not visible and also no pop-up then the game ended
                         if (++gameEndGuesses >= 5)
-                        //if (AskYesNo("Has game ended?"))
                         {
-                            Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} assumes that game has ended");
-                            gameEnded = true;
+                            if (AskYesNo("Has game ended?"))
+                            {
+                                Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} assumes that game has ended");
+                                gameEnded = true;
+                            }
+                            else
+                            {
+                                gameEndGuesses = 0;
+                            }
                         }
 
                         if (gameEnded)

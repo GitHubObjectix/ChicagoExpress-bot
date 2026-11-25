@@ -27,7 +27,7 @@ namespace chicago_express_bot
     {
         public List<PlayerState> Players { get; set; } = new();
         public List<CompanyState> Companies { get; set; } = new();
-        public List<BoardField> Board { get; set; } = new();
+        public BoardState Board { get; set; } = new();
     }
 
     public sealed class PlayerState
@@ -45,6 +45,17 @@ namespace chicago_express_bot
         public float Cash { get; set; }
         public int SharesAvailable { get; set; }
         public int Income { get; set; }
+    }
+
+    public sealed class BoardState
+    {
+        public int NumberOfRemainingHouses { get; set; }
+
+        public int[] GaugePositions { get; set; } = new int[ChicagoExpressSetup.Gauges];
+
+        public int[] IndustrialTrackPositions { get; set; } = new int[ChicagoExpressSetup.IndustrialCities.Length];
+
+        public List<BoardField> Fields { get; set; } = new();
     }
 
     public sealed class BoardField

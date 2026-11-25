@@ -118,6 +118,48 @@ namespace chicago_express_bot
         }
     }
 
+    public static class BoardStateEncoder
+    {
+        public static int FeatureCount =>
+            1
+            + Enumerable.Range(0, ChicagoExpressSetup.Gauges).Sum(i => ChicagoExpressSetup.GaugeSizes[i])
+            + ChicagoExpressSetup.IndustrialCities.Length * ChicagoExpressSetup.IndustrialCityTrackCells[0].Length
+            + ChicagoExpressSetup.FieldCount() * BoardFieldEncoder.FeatureCount;
+
+        public static float[] Encode(BoardState boardState)
+        {
+            var features = new List<float>(FeatureCount);
+
+            features.Add(EncodeHelper.Normalize(boardState.NumberOfRemainingHouses, ChicagoExpressSetup.Houses));
+
+            for (int i = 0; i < ChicagoExpressSetup.Gauges; ++i)
+            {
+                float[] gaugeFeatures = new float[ChicagoExpressSetup.GaugeSizes[i]];
+                EncodeHelper.SetOneHot(gaugeFeatures, 0, ChicagoExpressSetup.GaugeSizes[i], boardState.GaugePositions[i]);
+                features.AddRange(gaugeFeatures);
+            }
+
+            for (int i = 0; i < ChicagoExpressSetup.IndustrialCities.Length; ++i)
+            {
+                float[] trackFeatures = new float[ChicagoExpressSetup.IndustrialCityTrackCells[0].Length];
+                EncodeHelper.SetOneHot(trackFeatures, 0, trackFeatures.Length, boardState.IndustrialTrackPositions[i]);
+                features.AddRange(trackFeatures);
+            }
+
+            // 4. Board features, in permanent field order.
+            foreach (var field in boardState.Fields)
+            {
+                features.AddRange(BoardFieldEncoder.Encode(field));
+            }
+
+            if (features.Count != FeatureCount)
+                throw new InvalidOperationException(
+                    $"Expected {FeatureCount} features, got {features.Count}");
+
+            return features.ToArray();
+        }
+    }
+
     public sealed class GameStateEncoder
     {
         private readonly int _playerCount;
@@ -132,9 +174,7 @@ namespace chicago_express_bot
         public int FeatureCount =>
             _playerCount * PlayerStateEncoder.FeatureCount
             + ChicagoExpressSetup.RailwayCompanies.Length * CompanyStateEncoder.FeatureCount
-            //+ _gaugeSize
-            + ChicagoExpressSetup.FieldCount() * BoardFieldEncoder.FeatureCount;
-
+            + BoardStateEncoder.FeatureCount;
 
         public float[] Encode(GameState state, int currentPlayer)
         {
@@ -157,14 +197,8 @@ namespace chicago_express_bot
                 features.AddRange(CompanyStateEncoder.Encode(state.Companies[i], i));
             }
 
-            // 3. Action gauge. TOOD! consider to encode gauge positions
-            //features.AddRange(state.ActionGauge);
-
-            // 4. Board features, in permanent field order.
-            foreach (var field in state.Board)
-            {
-                features.AddRange(BoardFieldEncoder.Encode(field));
-            }
+            // 3. Board features
+            features.AddRange(BoardStateEncoder.Encode(state.Board));
 
             if (features.Count != FeatureCount)
                 throw new InvalidOperationException(
@@ -181,12 +215,15 @@ namespace chicago_express_bot
             if (state.Companies.Count != ChicagoExpressSetup.RailwayCompanies.Length)
                 throw new ArgumentException("Unexpected company count.");
 
-            if (state.Board.Count != ChicagoExpressSetup.FieldCount())
-                throw new ArgumentException("Unexpected field count.");
+            if (state.Board.GaugePositions.Length != ChicagoExpressSetup.Gauges)
+                throw new ArgumentException("Unexpected gauge position count");
 
-            // TODO! consider to encode gauge positions
-            //if (state.ActionGauge.Length != _gaugeSize)
-            //    throw new ArgumentException("Unexpected gauge size.");
+            if (state.Board.IndustrialTrackPositions.Length != ChicagoExpressSetup.IndustrialCities.Length)
+                throw new ArgumentException("Unexpected industrial track position count");
+
+
+            if (state.Board.Fields.Count != ChicagoExpressSetup.FieldCount())
+                throw new ArgumentException("Unexpected field count.");
 
             foreach (var player in state.Players)
             {
@@ -195,7 +232,7 @@ namespace chicago_express_bot
                         "Unexpected player share-array size.");
             }
 
-            foreach (var field in state.Board)
+            foreach (var field in state.Board.Fields)
             {
                 if (field.Companies.Count != ChicagoExpressSetup.RailwayCompanies.Length)
                     throw new ArgumentException(

@@ -2,7 +2,7 @@
   "profiles": {
     "chicago-express-bot": {
       "commandName": "Project",
-      "commandLineArgs": "--storage D:\\chicago-express-bot-data"
+      "commandLineArgs": "--storage D:\\chicago-express-bot-data\\Evelyn"
     }
   }
 }

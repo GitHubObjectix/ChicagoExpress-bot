@@ -33,10 +33,10 @@ namespace chicago_express_bot
             opponentRewards /= playerCount - 1;
             reward -= 0.5f * opponentRewards;
 
+            // TODO! add a reward bonus for an auction when share was bought at reasonable price
+
             return reward / rewardScale;
         }
-
-
 
         private float EstimatePlayerValue(GameState gameState, int playerIndex)
         {
@@ -45,10 +45,18 @@ namespace chicago_express_bot
             foreach (var (company, c) in ChicagoExpressSetup.RailwayCompanies.Select(
                     (company, index) => (company, index)))
             {
-                if (company.Stocks - gameState.Companies[c].SharesAvailable > 0)
+                var numberOfHeldShares = company.Stocks - gameState.Companies[c].SharesAvailable;
+
+                if (numberOfHeldShares > 0)
                 {
-                    int incomePerShare = (int)Math.Ceiling((double)gameState.Companies[c].Income / (double)(company.Stocks - gameState.Companies[c].SharesAvailable));
-                    playerValue += gameState.Players[playerIndex].Shares[c] * incomePerShare;
+                    int incomePerShare = (int)Math.Ceiling((double)gameState.Companies[c].Income / (double)numberOfHeldShares);
+
+                    // add estimated value for upcoming dividends, to reward holding of shares
+                    int numUpcomingDividends = ChicagoExpressSetup.IndustrialCityTrackCells[0].Length - gameState.Board.IndustrialTrackPositions[0];
+                    for (int dividendPhaseIndex = 0; dividendPhaseIndex < numUpcomingDividends; ++dividendPhaseIndex)
+                    {
+                        playerValue += gameState.Players[playerIndex].Shares[c] * incomePerShare;
+                    }
                 }
             }
 

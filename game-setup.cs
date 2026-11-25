@@ -53,6 +53,8 @@ public static class ChicagoExpressSetup
     public const int Cash = 1500;
     public const int Gauges = 3;
 
+    public static readonly int[] GaugeSizes = [4, 5, 6];
+
     public static readonly (int FirstRow, int LastRow)[] ColumnConfiguration =
     {
         (2, 4), (2, 6), (0, 7), (0, 7), (0, 8), (1, 8), (2, 9),
