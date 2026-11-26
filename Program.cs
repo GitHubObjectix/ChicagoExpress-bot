@@ -365,6 +365,8 @@ try
                             NextLegalActionsFeatures: Array.Empty<float[]>(),
                             IsTerminal: true);
                         neuralNetworkManager!.AddTransitionToReplayBuffer(transition);
+
+                        pendingTransition = null;
                     }
                 }
             }

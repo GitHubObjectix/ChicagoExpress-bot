@@ -110,7 +110,7 @@ namespace chicago_express_bot
         {
             bool loaded = false;
 
-            if (File.Exists(BOT_CONFIGURATION_FILENAME))
+            if (File.Exists(ConfigurationPath))
             {
                 string json = File.ReadAllText(ConfigurationPath);
 

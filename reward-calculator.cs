@@ -55,10 +55,18 @@ namespace chicago_express_bot
                 case ActionType.Pass:
                     break;
                 case ActionType.DevelopHex:
+                    {
+                        var selectFieldAction = (SelectFieldAction)chosenAction;
+                        reward += ChicagoExpressSetup.GetCostAndIncomeConfiguration(selectFieldAction.RowIndex, selectFieldAction.ColumnIndex).IncomeIfDeveloped * 0.05f * rewardScale;
+                    }
                     break;
                 case ActionType.SelectConstructionCompany:
                     break;
                 case ActionType.ConstructHex:
+                    {
+                        var selectFieldAction = (SelectFieldAction)chosenAction;
+                        reward += ChicagoExpressSetup.GetCostAndIncomeConfiguration(selectFieldAction.RowIndex, selectFieldAction.ColumnIndex).Income * 0.05f * rewardScale;
+                    }
                     break;
             }
 
@@ -72,11 +80,11 @@ namespace chicago_express_bot
 
                 if (winningPlayerIndexes.Contains(rewardedPlayerIndex))
                 {
-                    reward += winningPlayerIndexes.Count > 1 ? 0.5f : 1.0f;
+                    reward += (winningPlayerIndexes.Count > 1 ? 0.5f : 1.0f) * rewardScale;
                 }
                 else
                 {
-                    reward += -1.0f;
+                    reward += -1.0f * rewardScale;
                 }
             }
 
