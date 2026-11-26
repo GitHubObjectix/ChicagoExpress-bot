@@ -8,8 +8,9 @@ using TorchSharp;
 // game related variables
 int tabIndex = 0;
 bool shutdownRequested = false;
-int gameEndGuesses = 0;
 bool gameEnded = false;
+bool isSupervisor = false;
+bool isTraining = false;
 
 Console.CancelKeyPress += (_, eventArgs) =>
 {
@@ -41,6 +42,14 @@ for (int i = 0; i < args.Length; i++)
         }
 
         storagePath = args[++i];
+    }
+    else if (argument == "--supervisor")
+    {
+        isSupervisor = true;
+    }
+    else if (argument == "--training")
+    {
+        isTraining = true;
     }
     else if (argument.StartsWith("--storage=", StringComparison.Ordinal))
     {
@@ -150,12 +159,17 @@ try
         Console.WriteLine("I am not ready to play");
     }
 
-    Console.WriteLine($"Playing {gameFrontendHandler.GetPlayerName()} in this game...");
+    Console.WriteLine($"Playing {gameFrontendHandler.GetPlayerName()} in this game {(isSupervisor ? "as supervisor" : "")}...");
+    Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} {(isTraining ? " trains" : " just plays")}");    
 
     // initialize neural network related variables
     stateEncoder = new StateEncoder(gameFrontendHandler.GetNumPlayers());
 
-    neuralNetworkManager = new NeuralNetworkManager(checkpointDirectory, stateEncoder.FeatureCount, ActionEncoder.FeatureCount);
+    neuralNetworkManager = new NeuralNetworkManager(
+        checkpointDirectory,
+        stateEncoder.FeatureCount,
+        ActionEncoder.FeatureCount,
+        isTraining: isTraining);
     if (neuralNetworkManager.LoadPolicyNetwork())
     {
         Console.WriteLine($"policy-network loaded: {neuralNetworkManager.PolicyNetworkPath}");
@@ -185,20 +199,29 @@ try
     // end neural network initialization
 
     // main loop to play several games in series
-    while (!shutdownRequested)
+    while (browser.IsConnected && !gamePage.IsClosed && !shutdownRequested)
     {
         gameEnded = false;
 
         while (!await gameFrontendHandler.IsGameStarted())
         {
-            Console.WriteLine("Game has not yet started");
+            if (isSupervisor)
+            {
+                Console.WriteLine("Starting game as supervisor");
+                await gameFrontendHandler.Click("button.ready");
+            }
+            else
+            {
+                Console.WriteLine("Game has not yet started");
+            }
+
             await Task.Delay(250);
         }
 
         Console.WriteLine("Game starts");
 
         // main game loop
-        while (browser.IsConnected && !gamePage.IsClosed && !gameEnded)
+        while (browser.IsConnected && !gamePage.IsClosed && !shutdownRequested && !gameEnded)
         {
             try
             {
@@ -299,7 +322,7 @@ try
 
                     if (!await gameFrontendHandler.IsGameEndPopup())
                     {
-                        if (gameFrontendHandler.IsLocalGame() && gameFrontendHandler.GetSelectedPlayer() == 0 || !gameFrontendHandler.IsLocalGame())
+                        if (gameFrontendHandler.IsLocalGame() && isSupervisor || !gameFrontendHandler.IsLocalGame())
                         {
                             // dismiss the modal pop-up
                             popupCanBeDismissed = true;
@@ -307,12 +330,8 @@ try
                     }
                     else
                     {
-                        if (++gameEndGuesses >= 5)
-                        {
-                            Console.Write($"{gameFrontendHandler.GetPlayerName()} assumes that game has ended...");
-                            gameEndGuesses = 0;
-                            gameEnded = true;
-                        }
+                        Console.Write($"{gameFrontendHandler.GetPlayerName()} assumes that game has ended...");
+                        gameEnded = true;
                     }
 
                     if (popupCanBeDismissed)
@@ -350,11 +369,25 @@ try
                 }
             }
 
-            await Task.Delay(250);
+            if (!shutdownRequested && !gameEnded)
+                await Task.Delay(250);
         }
 
-        if (!shutdownRequested)
-            await Task.Delay(1000);
+        if (gameEnded && isSupervisor && !shutdownRequested)
+        {
+            // wait before dismissing the pop-up so that other bots can see it as well
+            await Task.Delay(10000);
+
+            Console.WriteLine("As supervisor i dismiss game end popup and reload the page");
+
+            // if this bot is the supervisor it must dismiss the game end popup...
+            await gameFrontendHandler.Click("div#announcement.modal-popup");
+            await Task.Delay(3000);
+
+            // end prepare restart of another game by reloading the page
+            await gamePage.ReloadAsync();
+            await Task.Delay(5000);
+        }
     }
 }
 catch (Exception ex)

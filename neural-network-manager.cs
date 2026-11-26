@@ -30,12 +30,14 @@ namespace chicago_express_bot
         ReplayBuffer replayBuffer;
         int numTrainingSteps = 0;
         int numMoves = 0;
+        bool isTraining = false;
 
         NeuralNetworkManagerConfiguration Configuration { get; set; } = new NeuralNetworkManagerConfiguration();
 
-        public NeuralNetworkManager(string storageDirectory, int stateFeatureCount, int actionFeatureCount)
+        public NeuralNetworkManager(string storageDirectory, int stateFeatureCount, int actionFeatureCount, bool isTraining = false)
         {
             this.storageDirectory = storageDirectory;
+            this.isTraining = isTraining;
 
             PolicyNetworkPath = Path.Combine(storageDirectory, POLICY_NETWORK_FILENAME);
             TargetNetworkPath = Path.Combine(storageDirectory, TARGET_NETWORK_FILENAME);
@@ -185,7 +187,7 @@ namespace chicago_express_bot
 
         public void UpdateNetworks()
         {
-            if (replayBuffer.Count >= 50)
+            if (isTraining && replayBuffer.Count >= 50)
             {
                 ReplayTransition[] batch = replayBuffer.Sample(32);
 
@@ -226,9 +228,20 @@ namespace chicago_express_bot
         // the epsilon of greedy approach to select best actions
         private float Epsilon()
         {
-            return Configuration.epsilonMinimum
-                + (Configuration.epsilonStart - Configuration.epsilonMinimum)
-                * MathF.Exp(-numMoves / Configuration.decayRate);
+            float epsilon;
+
+            if (isTraining)
+            {
+                epsilon = Configuration.epsilonMinimum
+                    + (Configuration.epsilonStart - Configuration.epsilonMinimum)
+                    * MathF.Exp(-numMoves / Configuration.decayRate);
+            }
+            else
+            {
+                epsilon = 0.0f;
+            }
+
+            return epsilon;
         }
     }
 }
