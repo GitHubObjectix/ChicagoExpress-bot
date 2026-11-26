@@ -24,7 +24,7 @@ namespace chicago_express_bot
         int trainingSteps = 0;
 
         // the epsilon of greedy approach to select best actions
-        float epsilon = 1.0f;
+        float epsilon = 0.8f;
 
         public NeuralNetworkManager(string storageDirectory, int stateFeatureCount, int actionFeatureCount)
         {

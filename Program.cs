@@ -294,55 +294,65 @@ try
                     bool isPopupVisible = await gameFrontendHandler.IsPopupVisible(100);
                     if (isPopupVisible)
                     {
+                        bool popupCanBeDismissed = false;
+
                         Console.Write("There is a pop-up visible...");
-                        if (gameFrontendHandler.IsLocalGame() && gameFrontendHandler.GetSelectedPlayer() == 0 || !gameFrontendHandler.IsLocalGame())
+
+                        if (!await gameFrontendHandler.IsGameEndPopup())
+                        {
+                            if (gameFrontendHandler.IsLocalGame() && gameFrontendHandler.GetSelectedPlayer() == 0 || !gameFrontendHandler.IsLocalGame())
+                            {
+                                // dismiss the modal pop-up
+                                popupCanBeDismissed = true;
+                            }
+                        }
+                        else
+                        {
+                            if (++gameEndGuesses >= 5)
+                            {
+                                Console.Write($"{gameFrontendHandler.GetPlayerName()} assumes that game has ended");
+                                gameEndGuesses = 0;
+                                gameEnded = true;
+
+                                popupCanBeDismissed = true;
+                            }
+                        }
+
+                        if (popupCanBeDismissed)
                         {
                             // dismiss the modal pop-up
                             await gameFrontendHandler.Click("div#announcement.modal-popup");
                             await Task.Delay(3000);
                             Console.Write("dismissed it");
+
+                            popupCanBeDismissed = false;
                         }
+
                         Console.WriteLine();
                     }
-                    else
+
+                    if (gameEnded)
                     {
-                        // if player-controls are not visible and also no pop-up then the game ended
-                        if (++gameEndGuesses >= 5)
+                        if (pendingTransition != null)
                         {
-                            if (AskYesNo("Has game ended?"))
-                            {
-                                Console.WriteLine($"{gameFrontendHandler.GetPlayerName()} assumes that game has ended");
-                                gameEnded = true;
-                            }
-                            else
-                            {
-                                gameEndGuesses = 0;
-                            }
+                            // scrape current game state
+                            var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), gameFrontendHandler.GetSelectedPlayer());
+
+                            // if there is a pending action from previous move to finalize, store it in the replay buffer
+                            float reward = CalculateReward(rewardCalculator!, pendingTransition.State, pendingTransition.ChosenAction, gameState, true, gameFrontendHandler.GetSelectedPlayer());
+
+                            var transition = new ReplayTransition(
+                                StateFeatures: pendingTransition.StateFeatures,
+                                ChosenActionFeatures: pendingTransition.ChosenActionFeatures,
+                                Reward: reward,
+                                NextStateFeatures: Array.Empty<float>(),
+                                NextLegalActionsFeatures: Array.Empty<float[]>(),
+                                IsTerminal: true);
+                            neuralNetworkManager!.AddTransitionToReplayBuffer(transition);
                         }
 
-                        if (gameEnded)
-                        {
-                            if (pendingTransition != null)
-                            {
-                                // scrape current game state
-                                var gameState = await game_state_scraping.ScrapeGameState(gameFrontendHandler, gameFrontendHandler.GetNumPlayers(), gameFrontendHandler.GetSelectedPlayer());
-
-                                // if there is a pending action from previous move to finalize, store it in the replay buffer
-                                float reward = CalculateReward(rewardCalculator!, pendingTransition.State, pendingTransition.ChosenAction, gameState, true, gameFrontendHandler.GetSelectedPlayer());
-
-                                var transition = new ReplayTransition(
-                                    StateFeatures: pendingTransition.StateFeatures,
-                                    ChosenActionFeatures: pendingTransition.ChosenActionFeatures,
-                                    Reward: reward,
-                                    NextStateFeatures: Array.Empty<float>(),
-                                    NextLegalActionsFeatures: Array.Empty<float[]>(),
-                                    IsTerminal: true);
-                                neuralNetworkManager!.AddTransitionToReplayBuffer(transition);
-                            }
-
-                            // finally update the networks
-                            neuralNetworkManager!.UpdateNetworks(true);
-                        }
+                        // finally update the networks
+                        neuralNetworkManager!.UpdateNetworks(true);
                     }
                 }
 

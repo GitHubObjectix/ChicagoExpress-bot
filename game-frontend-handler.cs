@@ -346,6 +346,15 @@ namespace chicago_express_bot
             return isVisible;
         }
 
+        public async Task<bool> IsGameEndPopup()
+        {
+            var heading = uiFrame.Locator("#announcement h1").Filter(new() { HasTextRegex = new Regex("tie|Victory", RegexOptions.IgnoreCase) });
+
+            int headingCount = await heading.CountAsync();
+
+            return headingCount > 0;
+        }
+
         public async Task Click(string selectorOrLocator)
         {
             var locator = uiFrame.Locator(selectorOrLocator);
