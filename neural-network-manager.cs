@@ -14,12 +14,14 @@ namespace chicago_express_bot
         static private string TARGET_NETWORK_FILENAME = "target-network.pt";
         static private string OPTIMIZER_FILENAME = "optimizer.pt";
         static private string BOT_CONFIGURATION_FILENAME = "bot-configuration.json";
+        static private string RUNTIME_STATE_FILENAME = "runtime-state.bin";
 
         private string storageDirectory;
         public readonly string PolicyNetworkPath;
         public readonly string TargetNetworkPath;
         public readonly string OptimizerPath;
         public readonly string ConfigurationPath;
+        public readonly string RuntimeStatePath;
 
         private ActionQNetwork policyNetwork;
         private ActionQNetwork targetNetwork;
@@ -39,6 +41,7 @@ namespace chicago_express_bot
             TargetNetworkPath = Path.Combine(storageDirectory, TARGET_NETWORK_FILENAME);
             OptimizerPath = Path.Combine(storageDirectory, OPTIMIZER_FILENAME);
             ConfigurationPath = Path.Combine(storageDirectory, BOT_CONFIGURATION_FILENAME);
+            RuntimeStatePath = Path.Combine(storageDirectory, RUNTIME_STATE_FILENAME);
 
             var device = torch.CPU;
 
@@ -136,15 +139,59 @@ namespace chicago_express_bot
             return replayBuffer.Count;
         }
 
-        public void UpdateNetworks(bool forced = false)
+        public void SaveRuntimeState()
         {
-            if (forced || replayBuffer.Count >= 50)
+            Directory.CreateDirectory(storageDirectory);
+
+            using FileStream fileStream = File.Create(RuntimeStatePath);
+            using BinaryWriter writer = new(fileStream);
+
+            writer.Write(1); // Runtime state format version.
+            writer.Write(numTrainingSteps);
+            writer.Write(numMoves);
+            replayBuffer.WriteTo(writer);
+        }
+
+        public bool LoadRuntimeState()
+        {
+            if (!File.Exists(RuntimeStatePath))
+                return false;
+
+            using FileStream fileStream = File.OpenRead(RuntimeStatePath);
+            using BinaryReader reader = new(fileStream);
+
+            int version = reader.ReadInt32();
+
+            if (version != 1)
+                throw new InvalidDataException(
+                    $"Unsupported runtime state format version: {version}.");
+
+            int loadedNumTrainingSteps = reader.ReadInt32();
+            int loadedNumMoves = reader.ReadInt32();
+            ReplayBuffer loadedReplayBuffer = ReplayBuffer.ReadFrom(reader);
+
+            if (loadedNumTrainingSteps < 0)
+                throw new InvalidDataException("Training step count is invalid.");
+
+            if (loadedNumMoves < 0)
+                throw new InvalidDataException("Move count is invalid.");
+
+            numTrainingSteps = loadedNumTrainingSteps;
+            numMoves = loadedNumMoves;
+            replayBuffer = loadedReplayBuffer;
+
+            return true;
+        }
+
+        public void UpdateNetworks()
+        {
+            if (replayBuffer.Count >= 50)
             {
-                ReplayTransition[] batch = replayBuffer.Sample(forced ? replayBuffer.Count : 32);
+                ReplayTransition[] batch = replayBuffer.Sample(32);
 
                 DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
 
-                if (forced || ++numTrainingSteps >= 50)
+                if (++numTrainingSteps >= 50)
                 {
                     targetNetwork.load_state_dict(policyNetwork!.state_dict());
                     numTrainingSteps = 0;
