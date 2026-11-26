@@ -1,0 +1,5 @@
+{
+  "epsilonStart": 1.0,
+  "epsilonMinimum": 0.05,
+  "decayRate": 50000.0
+}

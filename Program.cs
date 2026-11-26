@@ -192,6 +192,11 @@ try
                     Console.WriteLine($"optimizer loaded: {neuralNetworkManager.OptimizerPath}");
                 }
 
+                if (neuralNetworkManager.LoadConfiguration())
+                {
+                    Console.WriteLine($"configuration loaded: {neuralNetworkManager.ConfigurationPath}. Configuration is {neuralNetworkManager.ConfigurationPath}");
+                }
+
                 rewardCalculator = new RewardCalculator();
                 // end neural network initialization
             }

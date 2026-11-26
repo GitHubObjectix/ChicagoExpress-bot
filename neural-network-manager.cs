@@ -1,30 +1,35 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json;
 using TorchSharp;
 
 namespace chicago_express_bot
 {
+    public sealed record NeuralNetworkManagerConfiguration(float epsilonStart = 1.0f, float epsilonMinimum = 0.05f, float decayRate = 50_000.0f);
+
     public class NeuralNetworkManager : IDisposable
     {
         static private string POLICY_NETWORK_FILENAME = "policy-network.pt";
         static private string TARGET_NETWORK_FILENAME = "target-network.pt";
         static private string OPTIMIZER_FILENAME = "optimizer.pt";
+        static private string BOT_CONFIGURATION_FILENAME = "bot-configuration.json";
 
         private string storageDirectory;
         public readonly string PolicyNetworkPath;
         public readonly string TargetNetworkPath;
         public readonly string OptimizerPath;
+        public readonly string ConfigurationPath;
 
         private ActionQNetwork policyNetwork;
         private ActionQNetwork targetNetwork;
         TorchSharp.Modules.Adam optimizer;
 
         ReplayBuffer replayBuffer;
-        int trainingSteps = 0;
+        int numTrainingSteps = 0;
+        int numMoves = 0;
 
-        // the epsilon of greedy approach to select best actions
-        float epsilon = 0.8f;
+        NeuralNetworkManagerConfiguration Configuration { get; set; } = new NeuralNetworkManagerConfiguration();
 
         public NeuralNetworkManager(string storageDirectory, int stateFeatureCount, int actionFeatureCount)
         {
@@ -33,6 +38,7 @@ namespace chicago_express_bot
             PolicyNetworkPath = Path.Combine(storageDirectory, POLICY_NETWORK_FILENAME);
             TargetNetworkPath = Path.Combine(storageDirectory, TARGET_NETWORK_FILENAME);
             OptimizerPath = Path.Combine(storageDirectory, OPTIMIZER_FILENAME);
+            ConfigurationPath = Path.Combine(storageDirectory, BOT_CONFIGURATION_FILENAME);
 
             var device = torch.CPU;
 
@@ -95,9 +101,34 @@ namespace chicago_express_bot
             return loaded;
         }
 
+        public bool LoadConfiguration()
+        {
+            bool loaded = false;
+
+            if (File.Exists(BOT_CONFIGURATION_FILENAME))
+            {
+                string json = File.ReadAllText(ConfigurationPath);
+
+                try
+                {
+                    Configuration = JsonSerializer.Deserialize<NeuralNetworkManagerConfiguration>(
+                    json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new JsonException(
+                        $"Configuration file '{ConfigurationPath}' does not contain a valid configuration.");
+
+                    loaded = true;
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            return loaded;
+        }
+
         public void AddTransitionToReplayBuffer(ReplayTransition transition)
         {
             replayBuffer.Add(transition);
+            ++numMoves;
         }
 
         public int GetReplayBufferCount()
@@ -113,10 +144,10 @@ namespace chicago_express_bot
 
                 DqnTrainer.TrainBatch(policyNetwork!, targetNetwork!, optimizer!, batch);
 
-                if (forced || ++trainingSteps >= 50)
+                if (forced || ++numTrainingSteps >= 50)
                 {
                     targetNetwork.load_state_dict(policyNetwork!.state_dict());
-                    trainingSteps = 0;
+                    numTrainingSteps = 0;
                 }
 
                 StoreNetworks();
@@ -129,7 +160,7 @@ namespace chicago_express_bot
                 policyNetwork,
                 stateFeatures,
                 candidateActions,
-                epsilon);
+                Epsilon());
         }
         public void Dispose()
         {
@@ -143,6 +174,14 @@ namespace chicago_express_bot
             policyNetwork!.save(PolicyNetworkPath);
             targetNetwork!.save(TargetNetworkPath);
             optimizer!.save_state_dict(OptimizerPath);
+        }
+
+        // the epsilon of greedy approach to select best actions
+        private float Epsilon()
+        {
+            return Configuration.epsilonMinimum
+                + (Configuration.epsilonStart - Configuration.epsilonMinimum)
+                * MathF.Exp(-numMoves / Configuration.decayRate);
         }
     }
 }
