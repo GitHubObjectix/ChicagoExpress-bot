@@ -11,7 +11,8 @@ namespace chicago_express_bot
             ActionQNetwork network,
             float[] stateFeatures,
             IReadOnlyList<float[]> candidateActions,
-            float epsilon)
+            float epsilon,
+            out bool actionWasExplored)
         {
             if (candidateActions.Count == 0)
                 throw new ArgumentException("No legal actions.");
@@ -28,6 +29,7 @@ namespace chicago_express_bot
             if (Random.Shared.NextSingle() < epsilon)
             {
                 bestIndex = Random.Shared.Next(candidateActions.Count);
+                actionWasExplored = true;
             }
             else
             {
@@ -66,6 +68,8 @@ namespace chicago_express_bot
                         bestIndex = i;
                     }
                 }
+
+                actionWasExplored = false;
             }
 
             return bestIndex;

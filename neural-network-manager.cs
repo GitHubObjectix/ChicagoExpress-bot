@@ -32,7 +32,11 @@ namespace chicago_express_bot
         int numMoves = 0;
         bool isTraining = false;
 
-        NeuralNetworkManagerConfiguration Configuration { get; set; } = new NeuralNetworkManagerConfiguration();
+        public NeuralNetworkManagerConfiguration Configuration { get; set; } = new NeuralNetworkManagerConfiguration();
+
+        public float Epsilon { get { return GetEpsilon(); } }
+        public int NumTrainingSteps { get { return numTrainingSteps; } }
+        public int NumMoves { get { return numMoves;  } }
 
         public NeuralNetworkManager(string storageDirectory, int stateFeatureCount, int actionFeatureCount, bool isTraining = false)
         {
@@ -203,14 +207,16 @@ namespace chicago_express_bot
             }
         }
 
-        public int ChooseBestAction(float[] stateFeatures, IReadOnlyList<float[]> candidateActions)
+        public int ChooseBestAction(float[] stateFeatures, IReadOnlyList<float[]> candidateActions, out bool actionWasExplored)
         {
             return ActionSelector.ChooseBestAction(
                 policyNetwork,
                 stateFeatures,
                 candidateActions,
-                Epsilon());
+                GetEpsilon(),
+                out actionWasExplored);
         }
+
         public void Dispose()
         {
             optimizer?.Dispose();
@@ -226,7 +232,7 @@ namespace chicago_express_bot
         }
 
         // the epsilon of greedy approach to select best actions
-        private float Epsilon()
+        private float GetEpsilon()
         {
             float epsilon;
 

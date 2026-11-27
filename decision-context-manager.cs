@@ -74,7 +74,7 @@ namespace chicago_express_bot
                 }
                 else
                 {
-                    throw new NotSupportedException("unexpected possible action");
+                    throw new NotSupportedException($"Case I: unexpected possible action {possibleActions[0]}");
                 }
             }
             else if (possibleActions.Count == 2)
@@ -96,7 +96,7 @@ namespace chicago_express_bot
                             decisionContext.Phase = DecisionPhase.SelectConstructionCompanyOrSkip; break;
                         case 1:
                         default:
-                            throw new NotSupportedException("unexpected possible action");
+                            throw new NotSupportedException($"Case II: unexpected possible action. selected gauge is {decisionContext.SelectedGauge}");
                     }
                 }
                 else if (possibleActions[0] == "selectField" && possibleActions[1] == "skip")
@@ -111,17 +111,17 @@ namespace chicago_express_bot
                     }
                     else
                     {
-                        throw new NotSupportedException("unexpected possible action");
+                        throw new NotSupportedException($"Case III: unexpected possible action. selected gauge is {decisionContext.SelectedGauge}");
                     }
                 }
                 else
                 {
-                    throw new NotSupportedException("unexpected combination of possible actions");
+                    throw new NotSupportedException($"Case IV: unexpected combination of possible actions {possibleActions[0]} {possibleActions[1]}");
                 }
             }
             else
             {
-                throw new NotSupportedException("unexpected combination of possible actions");
+                throw new NotSupportedException($"Case V: unexpected combination of possible actions {possibleActions.Count} {possibleActions[0]} {possibleActions[1]} {possibleActions[2]}");
             }
         }
     }

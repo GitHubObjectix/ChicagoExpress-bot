@@ -281,10 +281,12 @@ try
                             }
 
                             // ...and let action selector determine the best action
-                            int bestActionIndex = neuralNetworkManager!.ChooseBestAction(stateFeatures, nextActionsFeatures);
+                            bool actionWasExplored = false;
+                            int bestActionIndex = neuralNetworkManager!.ChooseBestAction(stateFeatures, nextActionsFeatures, out actionWasExplored);
                             nextAction = nextActions[bestActionIndex];
 
                             // print the chosen action of the bot...
+                            Console.WriteLine($"Epsilon is {neuralNetworkManager.Epsilon} after {neuralNetworkManager.NumMoves} moves, action was {(actionWasExplored ? "explored" : "chosen by network")}");
                             Console.WriteLine($"Selected action: {nextAction.GetVerboseAction(gameFrontendHandler.GetPlayerName())}");
                             await Task.Delay(1000);
 
